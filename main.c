@@ -2,6 +2,7 @@
 
 Token *token;
 char *user_input;
+Node *code[100];
 
 int main(int argc, char **argv){
     if (argc != 2) {
@@ -13,16 +14,29 @@ int main(int argc, char **argv){
 
     // トークナイズする
     token = tokenize(user_input);
-    Node *node = expr();
+    program();
 
     // アセンブリの前半部分を出力
     printf(".intel_syntax noprefix\n");
     printf(".globl main\n");
     printf("main:\n");
 
-    gen(node);
+    // prologue
+    printf("  push rbp\n");
+    printf("  mov rbp, rsp\n");
+    printf("  sub rsp, 208\n");
 
-    printf("  pop rax\n");
+    // code gen
+    for (int i = 0; code[i]; i++) {
+        gen(code[i]);
+
+        // 式の評価結果としてスタックに一つの値が残っているので、スタック溢れを避けるためにポップする
+        printf("  pop rax\n");
+    }
+
+    // epilogue
+    printf("  mov rsp, rbp\n");
+    printf("  pop rbp\n");
     printf("  ret\n");
     return 0;
 }
