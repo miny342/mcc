@@ -35,5 +35,17 @@ assert 10 "i = 0; while(i < 10) i = i + 1; return i;"
 assert 11 "i = 1; while(i < 10) if(i < 5) i = i + 2; else i = i + 3; return i;"
 assert 55 "tmp = 0; for(i = 0; i <= 10; i = i + 1) tmp = tmp + i; return tmp;"
 assert 75 "width = 5; height=10; ans = 0; for(i = 1; i <= width; i = i + 1) for(j = 1; j <= height; j = j + 1) if(j > height / 2) ans = ans + 2; else ans = ans + 1; return ans;"
+assert 233 "
+fib = 13;
+if(fib < 0) return 0;
+current = 0;
+next = 1;
+for(i = 0; i < fib; i = i + 1) {
+  tmp = current;
+  current = next;
+  next = next + tmp;
+}
+return current;
+"
 
 echo OK
