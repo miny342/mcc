@@ -43,6 +43,15 @@ Token *consume_ident() {
     return tmp;
 }
 
+// 次のトークンが...TKの場合にはトークンを一つ読み進めて
+// 真を返す。それ以外は偽
+bool consumeTK(NodeKind kind) {
+    if (token->kind != kind)
+        return false;
+    token = token->next;
+    return true;
+}
+
 // 次のトークンが期待している記号の時には、トークンを一つ読み進める。
 // それ以外の場合にはエラーを報告する。
 void expect(char *op) {
@@ -58,6 +67,13 @@ int expect_number() {
     int val = token->val;
     token = token->next;
     return val;
+}
+
+int is_alnum(char c) {
+    return ('a' <= c && c <= 'z') ||
+           ('A' <= c && c <= 'Z') ||
+           ('0' <= c && c <= '9') ||
+           (c == '_');
 }
 
 bool at_eof() {
@@ -88,6 +104,12 @@ Token *tokenize(char *p) {
             continue;
         }
 
+        if (strncmp(p, "return", 6) == 0 && !is_alnum(p[6])) {
+            cur = new_token(TK_RETURN, cur, p, 6);
+            p += 6;
+            continue;
+        }
+
         if (strncmp(p, "==", 2) == 0 || strncmp(p, "!=", 2) == 0 ||
             strncmp(p, "<=", 2) == 0 || strncmp(p, ">=", 2) == 0) {
                 cur = new_token(TK_RESERVED, cur, p, 2);
@@ -97,7 +119,7 @@ Token *tokenize(char *p) {
 
         if (isalpha(*p)) {
             lvar_length = 0;
-            while(isalpha(*(p + lvar_length)) || isdigit(*(p + lvar_length)))
+            while(is_alnum(p[lvar_length]))
                 lvar_length++;
             cur = new_token(TK_IDENT, cur, p, lvar_length);
             p += lvar_length;
@@ -154,7 +176,14 @@ void program() {
 }
 
 Node *stmt() {
-    Node *node = expr();
+    Node *node;
+    if(consumeTK(TK_RETURN)) {
+        node = calloc(1, sizeof(Node));
+        node->kind = ND_RETURN;
+        node->lhs = expr();
+    } else {
+        node = expr();
+    }
     expect(";");
     return node;
 }
