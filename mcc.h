@@ -43,6 +43,18 @@ Token *tokenize(char *p);
 
 // parse.c
 
+typedef struct LVar LVar;
+
+// local variable
+struct LVar {
+    LVar *next;  // 次の変数 or NULL
+    char *name;  // 変数名
+    int len;     // 名前の長さ
+    int offset;  // RBPからのoffset
+};
+
+extern LVar *locals;
+
 typedef enum {
     ND_ADD, // +
     ND_SUB, // -

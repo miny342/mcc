@@ -29,5 +29,6 @@ assert 1 "(1 < 1 + 2) + 1 >= 2;"
 assert 2 "(1 > 1) + 2;"
 assert 1 "1 + 1 == 2;"
 assert 2 "a = 1;b = a + 1; b;"
+assert 3 "foo = 1; ba = 3; n2a = 7; n2a-foo-ba;"
 
 echo OK
