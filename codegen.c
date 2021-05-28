@@ -11,6 +11,9 @@ void gen_lval(Node *node) {
 
 // nodeからアセンブリを吐く
 void gen(Node *node) {
+    int loopval;
+    if(node == NULL) return;
+
     switch (node->kind) {
         case ND_RETURN:
             gen(node->lhs);
@@ -36,6 +39,51 @@ void gen(Node *node) {
             printf("  pop rax\n");
             printf("  mov [rax], rdi\n");
             printf("  push rdi\n");
+            return;
+        case ND_WHILE:
+            loopval = loopcnt;
+            loopcnt += 1;
+            printf(".Lbegin%d:\n", loopval);
+            gen(node->lhs);
+            printf("  pop rax\n");
+            printf("  cmp rax, 0\n");
+            printf("  je .Lend%d\n", loopval);
+            gen(node->rhs);
+            printf("  jmp .Lbegin%d\n", loopval);
+            printf(".Lend%d:\n", loopval);
+            return;
+        case ND_IF:
+            loopval = loopcnt;
+            loopcnt += 1;
+            gen(node->lhs);
+            printf("  pop rax\n");
+            printf("  cmp rax, 0\n");
+            if(node->rhs->kind == ND_ELSE) {
+                printf("  je .Lelse%d\n", loopval);
+                gen(node->rhs->lhs);
+                printf("  jmp .Lend%d\n", loopval);
+                printf(".Lelse%d:\n", loopval);
+                gen(node->rhs->rhs);
+                printf(".Lend%d:\n", loopval);
+            } else {
+                printf("  je .Lend%d\n", loopval);
+                gen(node->rhs);
+                printf(".Lend%d:\n", loopval);
+            }
+            return;
+        case ND_FOR:
+            loopval = loopcnt;
+            loopcnt += 1;
+            gen(node->lhs);
+            printf(".Lbegin%d:\n", loopval);
+            gen(node->rhs->lhs);
+            printf("  pop rax\n");
+            printf("  cmp rax, 0\n");
+            printf("  je .Lend%d\n", loopval);
+            gen(node->rhs->rhs->rhs);
+            gen(node->rhs->rhs->lhs);
+            printf("  jmp .Lbegin%d\n", loopval);
+            printf(".Lend%d:\n", loopval);
             return;
     }
 

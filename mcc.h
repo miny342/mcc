@@ -14,6 +14,10 @@ typedef enum {
     TK_NUM,      // 整数トークン
     TK_EOF,      // 入力の終わりを表すトークン
     TK_RETURN,   // return
+    TK_IF,       // if
+    TK_ELSE,     // else
+    TK_WHILE,    // while
+    TK_FOR,      // for
 } TokenKind;
 
 typedef struct Token Token;
@@ -69,6 +73,10 @@ typedef enum {
     ND_LVAR,  // 変数
     ND_NUM, // integer
     ND_RETURN, // return
+    ND_IF,   // if
+    ND_ELSE, // else
+    ND_WHILE, // while
+    ND_FOR, // for
 } NodeKind;
 
 typedef struct Node Node;
@@ -101,4 +109,4 @@ Node *primary();
 // codegen.c
 void gen(Node *node);
 
-
+extern int loopcnt;

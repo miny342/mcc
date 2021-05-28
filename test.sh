@@ -31,5 +31,9 @@ assert 1 "1 + 1 == 2;"
 assert 2 "a = 1;b = a + 1; b;"
 assert 3 "foo = 1; ba = 3; n2a = 7; n2a-foo-ba;"
 assert 4 "return 4; return 3;"
+assert 10 "i = 0; while(i < 10) i = i + 1; return i;"
+assert 11 "i = 1; while(i < 10) if(i < 5) i = i + 2; else i = i + 3; return i;"
+assert 55 "tmp = 0; for(i = 0; i <= 10; i = i + 1) tmp = tmp + i; return tmp;"
+assert 75 "width = 5; height=10; ans = 0; for(i = 1; i <= width; i = i + 1) for(j = 1; j <= height; j = j + 1) if(j > height / 2) ans = ans + 2; else ans = ans + 1; return ans;"
 
 echo OK

@@ -110,6 +110,30 @@ Token *tokenize(char *p) {
             continue;
         }
 
+        if (strncmp(p, "while", 5) == 0 && !is_alnum(p[5])) {
+            cur = new_token(TK_WHILE, cur, p, 5);
+            p += 5;
+            continue;
+        }
+
+        if (strncmp(p, "else", 4) == 0 && !is_alnum(p[4])) {
+            cur = new_token(TK_ELSE, cur, p, 4);
+            p += 4;
+            continue;
+        }
+
+        if (strncmp(p, "for", 3) == 0 && !is_alnum(p[3])) {
+            cur = new_token(TK_FOR, cur, p, 3);
+            p += 3;
+            continue;
+        }
+
+        if (strncmp(p, "if", 2) == 0 && !is_alnum(p[2])) {
+            cur = new_token(TK_IF, cur, p, 2);
+            p += 2;
+            continue;
+        }
+
         if (strncmp(p, "==", 2) == 0 || strncmp(p, "!=", 2) == 0 ||
             strncmp(p, "<=", 2) == 0 || strncmp(p, ">=", 2) == 0) {
                 cur = new_token(TK_RESERVED, cur, p, 2);
@@ -181,10 +205,44 @@ Node *stmt() {
         node = calloc(1, sizeof(Node));
         node->kind = ND_RETURN;
         node->lhs = expr();
-    } else {
-        node = expr();
+        expect(";");
+    } else if (consumeTK(TK_IF)) {
+        node = calloc(1, sizeof(Node));
+        node->kind = ND_IF;
+        expect("(");
+        node->lhs = expr();
+        expect(")");
+        node->rhs = stmt();
+        if (consumeTK(TK_ELSE))
+            node->rhs = new_node(ND_ELSE, node->rhs, stmt());
+    } else if (consumeTK(TK_WHILE)) {
+        node = calloc(1, sizeof(Node));
+        node->kind = ND_WHILE;
+        expect("(");
+        node->lhs = expr();
+        expect(")");
+        node->rhs = stmt();
+    } else if (consumeTK(TK_FOR)) {
+        node = new_node(ND_FOR, NULL, new_node(ND_FOR, NULL, new_node(ND_FOR, NULL, NULL)));
+        expect("(");
+        if(!consume(";")) {
+            node->lhs = expr();
+            expect(";");
+        }
+        if(!consume(";")) {
+            node->rhs->lhs = expr();
+            expect(";");
+        }
+        if(!consume(")")) {
+            node->rhs->rhs->lhs = expr();
+            expect(")");
+        }
+        node->rhs->rhs->rhs = stmt();
     }
-    expect(";");
+    else {
+       node = expr();
+       expect(";");
+    }
     return node;
 }
 
