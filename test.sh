@@ -47,5 +47,6 @@ for(i = 0; i < fib; i = i + 1) {
 }
 return current;
 "
+assert 0 "i = 11; foo(1 == 1,2,i-8,2+2,1+2+2,6,7,8,9,2*5,i,i+1);"
 
 echo OK

@@ -9,6 +9,63 @@ void gen_lval(Node *node) {
     printf("  push rax\n");
 }
 
+void gen_callstack(Node *node, int num) {
+    if (node->kind != ND_CALL)
+        error("this is not function");
+
+    if(node->lhs) {
+        gen_callstack(node->rhs, num + 1);
+        gen(node->lhs);
+    } else if (num > 6 && num % 2 == 1)
+        printf("  sub rsp, 8\n");
+}
+
+int gen_callregister(Node *node, int num) {
+    if (!(node->rhs)) {
+        if(num > 6) {
+            if (num % 2 == 1) {
+                return num - 5;
+            }
+            return num - 6;
+        }
+        return 0;
+    }
+    switch (num){
+        case 0:
+            printf("  pop rdi\n");
+            break;
+        case 1:
+            printf("  pop rsi\n");
+            break;
+        case 2:
+            printf("  pop rdx\n");
+            break;
+        case 3:
+            printf("  pop rcx\n");
+            break;
+        case 4:
+            printf("  pop r8\n");
+            break;
+        case 5:
+            printf("  pop r9\n");
+            break;
+    }
+    return gen_callregister(node->rhs, num + 1);
+}
+
+void gen_call(Node *node) {
+    if (node->kind != ND_CALL)
+        error("this is not function");
+
+    int stack;
+
+    gen_callstack(node, 0);
+    stack = gen_callregister(node, 0);
+    printf("  call %.*s\n", node->len, node->name);
+    printf("  add rsp, %d\n", stack * 8);
+    printf("  push rax\n");
+}
+
 // nodeからアセンブリを吐く
 void gen(Node *node) {
     int loopval;
@@ -91,6 +148,9 @@ void gen(Node *node) {
                 printf("  pop rax\n");
                 gen(node->rhs);
             }
+            return;
+        case ND_CALL:
+            gen_call(node);
             return;
     }
 

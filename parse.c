@@ -150,7 +150,7 @@ Token *tokenize(char *p) {
             continue;
         }
 
-        if (strchr("+-*/()<>;={}", *p)) {
+        if (strchr("+-*/()<>;={},", *p)) {
             cur = new_token(TK_RESERVED, cur, p++, 1);
             continue;
         }
@@ -337,7 +337,7 @@ Node *unary() {
     return primary();
 }
 
-// num | "(" expr ")" | ident
+// num | "(" expr ")" | ident ("(" ")")?
 Node *primary() {
     if (consume("(")){
         Node *node = expr();
@@ -348,8 +348,24 @@ Node *primary() {
     Token *tok = consume_ident();
     if(tok) {
         Node *node = calloc(1, sizeof(Node));
+        if(consume("(")) {
+            node->kind = ND_CALL;
+            node->name = tok->str;
+            node->len = tok->len;
+            Node *now_node = node;
+            if(!consume(")")) {
+                for(;;) {
+                    now_node->lhs = expr();
+                    now_node->rhs = calloc(1, sizeof(Node));
+                    now_node = now_node->rhs;
+                    now_node->kind = ND_CALL;
+                    if(!consume(",")) break;
+                }
+                expect(")");
+            }
+            return node;
+        }
         node->kind = ND_LVAR;
-        // node->offset = (tok->str[0] - 'a' + 1) * 8;
         LVar *lvar = find_lvar(tok);
         if (lvar) {
             node->offset = lvar->offset;

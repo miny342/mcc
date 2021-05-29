@@ -78,6 +78,7 @@ typedef enum {
     ND_WHILE, // while
     ND_FOR, // for
     ND_BLOCK, // {block}
+    ND_CALL  // function
 } NodeKind;
 
 typedef struct Node Node;
@@ -89,6 +90,8 @@ struct Node {
     Node *rhs;     // 右辺
     int val;       // kind == ND_NUM
     int offset;    // kind == ND_LVAR
+    char *name;    // kind == ND_CALL
+    int len;       // kind == ND_CALL
 };
 
 extern Node *code[100];
