@@ -37,7 +37,7 @@ void gen_global() {
         else{
             printf("  sub rsp, %d\n", (code->locals->offset - min(code->arglen, 6) * 8));}
 
-        gen_block(code->node);
+        gen(code->node);
 
         // epilogue
         printf("  pop rax\n");
