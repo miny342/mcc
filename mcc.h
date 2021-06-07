@@ -78,7 +78,7 @@ typedef enum {
     ND_WHILE, // while
     ND_FOR, // for
     ND_BLOCK, // {block}
-    ND_CALL  // function
+    ND_CALL,  // call function
 } NodeKind;
 
 typedef struct Node Node;
@@ -94,8 +94,20 @@ struct Node {
     int len;       // kind == ND_CALL
 };
 
-extern Node *code[100];
+typedef struct Global Global;
 
+struct Global {
+    Global *next;  // next Global or NULL
+    Node *node;    // stmt
+    LVar *locals;  // local variable
+    int arglen;    // function args (not float) quantity
+    char *name;    // function
+    int len;       // function
+};
+
+extern Global *code;
+
+Global *globalstmt();
 Node *new_node(NodeKind kind, Node *lhs, Node *rhs);
 Node *new_node_num(int val);
 void program();
@@ -112,5 +124,6 @@ Node *primary();
 
 // codegen.c
 void gen(Node *node);
+void gen_global();
 
 extern int loopcnt;

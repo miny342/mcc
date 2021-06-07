@@ -193,10 +193,59 @@ Node *new_node_num(int val) {
 }
 
 void program() {
-    int i = 0;
-    while(!at_eof())
-        code[i++] = stmt();
-    code[i] = NULL;
+    code = globalstmt();
+    Global *tmp = code;
+    while(!at_eof()) {
+        tmp->next = globalstmt();
+        tmp = tmp->next;
+    }
+}
+
+Global *globalstmt() {
+    Token *tok = consume_ident();
+    LVar *lvar, *tmp;
+    if(!tok) error("this is not function");
+    Global *glob = calloc(1, sizeof(Global));
+    expect("(");
+    glob->name = tok->str;
+    glob->len = tok->len;
+    locals = calloc(1, sizeof(LVar));
+    if(!consume(")")) {
+         for(;;) {
+            tok = consume_ident();
+            if(!tok) error("invalid argument");
+            lvar = find_lvar(tok);
+            if (lvar)
+                error("duplicate argments");
+            lvar = calloc(1, sizeof(LVar));
+            lvar->next = locals;
+            lvar->name = tok->str;
+            lvar->len = tok->len;
+            lvar->offset = locals->offset + 8;
+            glob->arglen += 1;
+            locals = lvar;
+            if(!consume(",")) break;
+        }
+        tmp = locals;
+        for(lvar = locals; lvar; lvar = lvar->next) {
+            if(lvar->offset > 6 * 8)
+                lvar->offset = 5 * 8 - lvar->offset;
+            if(lvar->offset == -16) {
+                locals = lvar->next;
+                lvar->next = NULL;
+                for(lvar = locals; lvar->next; lvar = lvar->next);
+                lvar->next = tmp;
+                break;
+            }
+        }
+        expect(")");
+    }
+    tok = token;
+    expect("{");
+    token = tok;
+    glob->node = stmt();
+    glob->locals = locals;
+    return glob;
 }
 
 Node *stmt() {
@@ -358,7 +407,6 @@ Node *primary() {
                     now_node->lhs = expr();
                     now_node->rhs = calloc(1, sizeof(Node));
                     now_node = now_node->rhs;
-                    now_node->kind = ND_CALL;
                     if(!consume(",")) break;
                 }
                 expect(")");

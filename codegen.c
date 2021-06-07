@@ -1,18 +1,65 @@
 #include "mcc.h"
+#define min(x, y) ((x) <= (y) ? (x) : (y))
+
+void gen_global() {
+    for(; code; code = code->next) {
+        printf("%.*s:\n", code->len, code->name);
+
+        // prologue
+        printf("  push rbp\n");
+        printf("  mov rbp, rsp\n");
+
+        for(int i = 0; i < code->arglen; i++) {
+            switch (i) {
+                case 0:
+                    printf("  push rdi\n");
+                    break;
+                case 1:
+                    printf("  push rsi\n");
+                    break;
+                case 2:
+                    printf("  push rdx\n");
+                    break;
+                case 3:
+                    printf("  push rcx\n");
+                    break;
+                case 4:
+                    printf("  push r8\n");
+                    break;
+                case 5:
+                    printf("  push r9\n");
+                    break;
+            }
+        }
+
+        if(code->locals->offset % 16 != 0){
+            printf("  sub rsp, %d\n", (code->locals->offset - min(code->arglen, 6) * 8) + 8);}
+        else{
+            printf("  sub rsp, %d\n", (code->locals->offset - min(code->arglen, 6) * 8));}
+
+        gen_block(code->node);
+
+        // epilogue
+        printf("  pop rax\n");
+        printf("  mov rsp, rbp\n");
+        printf("  pop rbp\n");
+        printf("  ret\n");
+    }
+}
 
 void gen_lval(Node *node) {
     if (node->kind != ND_LVAR)
         error("代入の左辺が変数ではありません");
 
     printf("  mov rax, rbp\n");
-    printf("  sub rax, %d\n", node->offset);
+    if(node->offset > 0)
+        printf("  sub rax, %d\n", node->offset);
+    else
+        printf("  add rax, %d\n", -node->offset);
     printf("  push rax\n");
 }
 
 void gen_callstack(Node *node, int num) {
-    if (node->kind != ND_CALL)
-        error("this is not function");
-
     if(node->lhs) {
         gen_callstack(node->rhs, num + 1);
         gen(node->lhs);
@@ -55,7 +102,7 @@ int gen_callregister(Node *node, int num) {
 
 void gen_call(Node *node) {
     if (node->kind != ND_CALL)
-        error("this is not function");
+        error("this is not call function");
 
     int stack;
 
@@ -66,7 +113,24 @@ void gen_call(Node *node) {
     printf("  push rax\n");
 }
 
+void gen_block_acc(Node *node) {
+    if(node->lhs) {
+        gen(node->lhs);
+        printf("  pop rax\n");
+        gen_block_acc(node->rhs);
+    }
+}
+
+void gen_block(Node *node) {
+    if (node->kind != ND_BLOCK)
+        error("this is not block");
+
+    gen_block_acc(node);
+    printf("  push rax\n");
+}
+
 // nodeからアセンブリを吐く
+// stackに値を一つ残す
 void gen(Node *node) {
     int loopval;
     if(node == NULL) return;
@@ -106,8 +170,10 @@ void gen(Node *node) {
             printf("  cmp rax, 0\n");
             printf("  je .Lend%d\n", loopval);
             gen(node->rhs);
+            printf("  pop rax\n");
             printf("  jmp .Lbegin%d\n", loopval);
             printf(".Lend%d:\n", loopval);
+            printf("  push rax\n");
             return;
         case ND_IF:
             loopval = loopcnt;
@@ -118,15 +184,19 @@ void gen(Node *node) {
             if(node->rhs->kind == ND_ELSE) {
                 printf("  je .Lelse%d\n", loopval);
                 gen(node->rhs->lhs);
+                printf("  pop rax\n");
                 printf("  jmp .Lend%d\n", loopval);
                 printf(".Lelse%d:\n", loopval);
                 gen(node->rhs->rhs);
+                printf("  pop rax\n");
                 printf(".Lend%d:\n", loopval);
             } else {
                 printf("  je .Lend%d\n", loopval);
                 gen(node->rhs);
+                printf("  pop rax\n");
                 printf(".Lend%d:\n", loopval);
             }
+            printf("  push rax\n");
             return;
         case ND_FOR:
             loopval = loopcnt;
@@ -138,16 +208,15 @@ void gen(Node *node) {
             printf("  cmp rax, 0\n");
             printf("  je .Lend%d\n", loopval);
             gen(node->rhs->rhs->rhs);
+            printf("  pop rax\n");
             gen(node->rhs->rhs->lhs);
+            printf("  pop rax\n");
             printf("  jmp .Lbegin%d\n", loopval);
             printf(".Lend%d:\n", loopval);
+            printf("  push rax\n");
             return;
         case ND_BLOCK:
-            if(node->lhs) {
-                gen(node->lhs);
-                printf("  pop rax\n");
-                gen(node->rhs);
-            }
+            gen_block(node);
             return;
         case ND_CALL:
             gen_call(node);
