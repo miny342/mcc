@@ -50,7 +50,7 @@ main() {
 }
 "
 # assert 0 "i = 11; foo(1 == 1,2,i-8,2+2,1+2+2,6,7,8);"
-assert 233 "main() { print(fib(40)); return 0; } fib(i) { if(i <= 0) return 0; if(i == 1) return 1; if(i == 2) return 1; return fib(i - 1) + fib(i - 2); }"
+assert 233 "main() { return fib(13); } fib(i) { if(i <= 0) return 0; if(i == 1) return 1; if(i == 2) return 1; return fib(i - 1) + fib(i - 2); }"
 # assert 1 "main() { return foo(3); } foo(i) { if(i == 0) return 0; if(i == 1) return 1 ; return foo(i - 1);}"
 # assert 0 "main() {
 #   foo(1,2,3,4,5,6,7,8);
@@ -70,5 +70,7 @@ assert 233 "main() { print(fib(40)); return 0; } fib(i) { if(i <= 0) return 0; i
 #   print(h);
 #   return 0;
 # }"
+assert 3 "main() {x = 3; y = &x; return *y;}"
+assert 3 "main() {x = 3; y = 5; z = &y + 8; return *z;}"
 
 echo OK

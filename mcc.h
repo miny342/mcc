@@ -79,6 +79,8 @@ typedef enum {
     ND_FOR, // for
     ND_BLOCK, // {block}
     ND_CALL,  // call function
+    ND_ADDR,  // address
+    ND_DEREF,  // デリファレンス
 } NodeKind;
 
 typedef struct Node Node;
