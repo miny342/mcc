@@ -48,14 +48,15 @@ void gen_global() {
 }
 
 void gen_lval(Node *node) {
+    if(node->kind == ND_DEREF) return gen(node->lhs);
     if (node->kind != ND_LVAR)
         error("代入の左辺が変数ではありません");
 
     printf("  mov rax, rbp\n");
-    if(node->offset > 0)
-        printf("  sub rax, %d\n", node->offset);
+    if(node->lvar->offset > 0)
+        printf("  sub rax, %d\n", node->lvar->offset);
     else
-        printf("  add rax, %d\n", -node->offset);
+        printf("  add rax, %d\n", -node->lvar->offset);
     printf("  push rax\n");
 }
 

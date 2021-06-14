@@ -49,6 +49,13 @@ Token *tokenize(char *p);
 
 // parse.c
 
+typedef struct Type Type;
+
+struct Type {
+    enum {INT, PTR} ty;
+    Type *ptr_to;
+};
+
 typedef struct LVar LVar;
 
 // local variable
@@ -57,6 +64,7 @@ struct LVar {
     char *name;  // 変数名
     int len;     // 名前の長さ
     int offset;  // RBPからのoffset
+    Type *type;   // 変数の型
 };
 
 extern LVar *locals;
@@ -92,7 +100,7 @@ struct Node {
     Node *lhs;     // 左辺
     Node *rhs;     // 右辺
     int val;       // kind == ND_NUM
-    int offset;    // kind == ND_LVAR
+    LVar *lvar;    // kind == ND_LVAR
     char *name;    // kind == ND_CALL
     int len;       // kind == ND_CALL
 };
@@ -106,6 +114,7 @@ struct Global {
     int arglen;    // function args (not float) quantity
     char *name;    // function
     int len;       // function
+    Type *type;    // return type
 };
 
 extern Global *code;

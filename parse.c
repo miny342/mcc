@@ -183,6 +183,38 @@ LVar *find_lvar(Token *tok) {
     return NULL;
 }
 
+Type *eval_type() {
+    if(!consumeTK(TK_INT))
+        error_at(token->str, "no int");
+    Type *tmp;
+    Type *type = calloc(1, sizeof(Type));
+    type->ty = INT;
+    while(consume("*")) {
+        tmp = calloc(1, sizeof(Type));
+        tmp->ptr_to = type;
+        tmp->ty = PTR;
+        type = tmp;
+    }
+    return type;
+}
+
+LVar *assign_lvar(Type *type) {
+    Token *tok = consume_ident();
+    if(!tok)
+        error_at(token->str, "non variable");
+    LVar *lvar = find_lvar(tok);
+    if (lvar)
+        error_at(tok->str, "duplicate");
+    lvar = calloc(1, sizeof(LVar));
+    lvar->next = locals;
+    lvar->name = tok->str;
+    lvar->len = tok->len;
+    lvar->offset = locals->offset + 8;
+    lvar->type = type;
+    locals = lvar;
+    return lvar;
+}
+
 Node *new_node(NodeKind kind, Node *lhs, Node *rhs) {
     Node *node = calloc(1, sizeof(Node));
     node->kind = kind;
@@ -208,8 +240,7 @@ void program() {
 }
 
 Global *globalstmt() {
-    if(!consumeTK(TK_INT))
-        error_at(token->str, "no int");
+    Type *type = eval_type();
     Token *tok = consume_ident();
     LVar *lvar, *tmp;
     if(!tok) error("this is not function");
@@ -217,23 +248,13 @@ Global *globalstmt() {
     expect("(");
     glob->name = tok->str;
     glob->len = tok->len;
+    glob->type = type;
     locals = calloc(1, sizeof(LVar));
     if(!consume(")")) {
          for(;;) {
-            if(!consumeTK(TK_INT))
-                error_at(token->str, "no int");
-            tok = consume_ident();
-            if(!tok) error("invalid argument");
-            lvar = find_lvar(tok);
-            if (lvar)
-                error("duplicate argments");
-            lvar = calloc(1, sizeof(LVar));
-            lvar->next = locals;
-            lvar->name = tok->str;
-            lvar->len = tok->len;
-            lvar->offset = locals->offset + 8;
+            type = eval_type();
+            assign_lvar(type);
             glob->arglen += 1;
-            locals = lvar;
             if(!consume(",")) break;
         }
         tmp = locals;
@@ -316,19 +337,9 @@ Node *stmt() {
 }
 
 Node *expr() {
-    if(consumeTK(TK_INT)) {
-        Token *tok = consume_ident();
-        if(!tok)
-            error_at(token->str, "non variable");
-        LVar *lvar = find_lvar(tok);
-        if (lvar)
-            error_at(tok->str, "duplicate");
-        lvar = calloc(1, sizeof(LVar));
-        lvar->next = locals;
-        lvar->name = tok->str;
-        lvar->len = tok->len;
-        lvar->offset = locals->offset + 8;
-        locals = lvar;
+    if(token->kind == TK_INT) {
+        Type *type = eval_type();
+        assign_lvar(type);
         return new_node_num(0);
     }
     return assign();
@@ -445,7 +456,7 @@ Node *primary() {
         node->kind = ND_LVAR;
         LVar *lvar = find_lvar(tok);
         if (lvar) {
-            node->offset = lvar->offset;
+            node->lvar = lvar;
         } else 
             error_at(tok->str, "undefined");
         return node;
