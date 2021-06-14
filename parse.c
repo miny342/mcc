@@ -122,6 +122,12 @@ Token *tokenize(char *p) {
             continue;
         }
 
+        if (strncmp(p, "int", 3) == 0 && !is_alnum(p[3])) {
+            cur = new_token(TK_INT, cur, p, 3);
+            p += 3;
+            continue;
+        }
+
         if (strncmp(p, "for", 3) == 0 && !is_alnum(p[3])) {
             cur = new_token(TK_FOR, cur, p, 3);
             p += 3;
@@ -202,6 +208,8 @@ void program() {
 }
 
 Global *globalstmt() {
+    if(!consumeTK(TK_INT))
+        error_at(token->str, "no int");
     Token *tok = consume_ident();
     LVar *lvar, *tmp;
     if(!tok) error("this is not function");
@@ -212,6 +220,8 @@ Global *globalstmt() {
     locals = calloc(1, sizeof(LVar));
     if(!consume(")")) {
          for(;;) {
+            if(!consumeTK(TK_INT))
+                error_at(token->str, "no int");
             tok = consume_ident();
             if(!tok) error("invalid argument");
             lvar = find_lvar(tok);
@@ -306,6 +316,21 @@ Node *stmt() {
 }
 
 Node *expr() {
+    if(consumeTK(TK_INT)) {
+        Token *tok = consume_ident();
+        if(!tok)
+            error_at(token->str, "non variable");
+        LVar *lvar = find_lvar(tok);
+        if (lvar)
+            error_at(tok->str, "duplicate");
+        lvar = calloc(1, sizeof(LVar));
+        lvar->next = locals;
+        lvar->name = tok->str;
+        lvar->len = tok->len;
+        lvar->offset = locals->offset + 8;
+        locals = lvar;
+        return new_node_num(0);
+    }
     return assign();
 }
 
@@ -421,15 +446,8 @@ Node *primary() {
         LVar *lvar = find_lvar(tok);
         if (lvar) {
             node->offset = lvar->offset;
-        } else {
-            lvar = calloc(1, sizeof(LVar));
-            lvar->next = locals;
-            lvar->name = tok->str;
-            lvar->len = tok->len;
-            lvar->offset = locals->offset + 8;
-            node->offset = lvar->offset;
-            locals = lvar;
-        }
+        } else 
+            error_at(tok->str, "undefined");
         return node;
     }
 
