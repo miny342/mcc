@@ -1,5 +1,10 @@
 #include "mcc.h"
 
+static Type int_type = {
+    INT,
+    NULL
+};
+
 // エラー箇所を報告する
 void error_at(char *loc, char *fmt, ...) {
     va_list ap;
@@ -215,11 +220,12 @@ LVar *assign_lvar(Type *type) {
     return lvar;
 }
 
-Node *new_node(NodeKind kind, Node *lhs, Node *rhs) {
+Node *new_node(NodeKind kind, Node *lhs, Node *rhs, Type *type) {
     Node *node = calloc(1, sizeof(Node));
     node->kind = kind;
     node->lhs = lhs;
     node->rhs = rhs;
+    node->type = type;
     return node;
 }
 
@@ -227,6 +233,7 @@ Node *new_node_num(int val) {
     Node *node = calloc(1, sizeof(Node));
     node->kind = ND_NUM;
     node->val = val;
+    node->type = &int_type;
     return node;
 }
 
@@ -294,7 +301,7 @@ Node *stmt() {
         expect(")");
         node->rhs = stmt();
         if (consumeTK(TK_ELSE))
-            node->rhs = new_node(ND_ELSE, node->rhs, stmt());
+            node->rhs = new_node(ND_ELSE, node->rhs, stmt(), NULL);
     } else if (consumeTK(TK_WHILE)) {
         node = calloc(1, sizeof(Node));
         node->kind = ND_WHILE;
@@ -303,7 +310,7 @@ Node *stmt() {
         expect(")");
         node->rhs = stmt();
     } else if (consumeTK(TK_FOR)) {
-        node = new_node(ND_FOR, NULL, new_node(ND_FOR, NULL, new_node(ND_FOR, NULL, NULL)));
+        node = new_node(ND_FOR, NULL, new_node(ND_FOR, NULL, new_node(ND_FOR, NULL, NULL, NULL), NULL), NULL);
         expect("(");
         if(!consume(";")) {
             node->lhs = expr();
@@ -348,8 +355,10 @@ Node *expr() {
 Node *assign() {
     Node *node = equality();
 
-    if(consume("="))
-        node = new_node(ND_ASSIGN, node, assign());
+    if(consume("=")) {
+        Node *right = assign();
+        node = new_node(ND_ASSIGN, node, right, right->type);
+    }
     return node;
 }
 
@@ -359,9 +368,9 @@ Node *equality() {
 
     for(;;){
         if (consume("=="))
-            node = new_node(ND_EQ, node, relational());
+            node = new_node(ND_EQ, node, relational(), &int_type);
         else if (consume("!="))
-            node = new_node(ND_NE, node, relational());
+            node = new_node(ND_NE, node, relational(), &int_type);
         else
             return node;
     }
@@ -373,13 +382,13 @@ Node *relational() {
 
     for(;;) {
         if (consume("<="))
-            node = new_node(ND_LE, node, add());
+            node = new_node(ND_LE, node, add(), &int_type);
         else if (consume(">="))
-            node = new_node(ND_LE, add(), node);
+            node = new_node(ND_LE, add(), node, &int_type);
         else if (consume("<"))
-            node = new_node(ND_LT, node, add());
+            node = new_node(ND_LT, node, add(), &int_type);
         else if (consume(">"))
-            node = new_node(ND_LT, add(), node);
+            node = new_node(ND_LT, add(), node, &int_type);
         else
             return node;
     }
@@ -388,12 +397,40 @@ Node *relational() {
 // mul ( + mul | - mul )*
 Node *add() {
     Node *node = mul();
+    Node *right;
 
     for(;;) {
-        if (consume("+"))
-            node = new_node(ND_ADD, node, mul());
-        else if (consume("-"))
-            node = new_node(ND_SUB, node, mul());
+        if (consume("+")) {
+            right = mul();
+            if(node->type->ty == PTR && right->type->ty == PTR) {
+                error_at(token->str, "ptr + ptrは未定義です");
+            }
+            else if(node->type->ty == PTR && node->type->ptr_to->ty == INT)
+                node = new_node(ND_ADD, node, new_node(ND_MUL, new_node_num(4), right, &int_type), node->type);
+            else if(node->type->ty == PTR && node->type->ptr_to->ty == PTR)
+                node = new_node(ND_ADD, node, new_node(ND_MUL, new_node_num(8), right, &int_type), node->type);
+            else if(right->type->ty == PTR && right->type->ptr_to->ty == INT)
+                node = new_node(ND_ADD, new_node(ND_MUL, new_node_num(4), node, &int_type), right, right->type);
+            else if(right->type->ty == PTR && right->type->ptr_to->ty == PTR)
+                node = new_node(ND_ADD, new_node(ND_MUL, new_node_num(8), node, &int_type), right, right->type);
+            else
+                node = new_node(ND_ADD, node, right, &int_type);
+        }
+        else if (consume("-")) {
+            right = mul();
+            if(node->type->ty == PTR && right->type->ty == PTR)
+                error_at(token->str, "ptr - ptrは未定義です");
+            else if(node->type->ty == PTR && node->type->ptr_to->ty == INT)
+                node = new_node(ND_SUB, node, new_node(ND_MUL, new_node_num(4), right, &int_type), node->type);
+            else if(node->type->ty == PTR && node->type->ptr_to->ty == PTR)
+                node = new_node(ND_SUB, node, new_node(ND_MUL, new_node_num(8), right, &int_type), node->type);
+            else if(right->type->ty == PTR && right->type->ptr_to->ty == INT)
+                node = new_node(ND_SUB, new_node(ND_MUL, new_node_num(4), node, &int_type), right, right->type);
+            else if(right->type->ty == PTR && right->type->ptr_to->ty == PTR)
+                node = new_node(ND_SUB, new_node(ND_MUL, new_node_num(8), node, &int_type), right, right->type);
+            else
+                node = new_node(ND_SUB, node, right, &int_type);
+        }
         else
             return node;
     }
@@ -402,12 +439,21 @@ Node *add() {
 // unary ( * unary | / unary )*
 Node *mul() {
     Node *node = unary();
+    Node *right;
 
     for(;;) {
-        if (consume("*"))
-            node = new_node(ND_MUL, node, unary());
-        else if (consume("/"))
-            node = new_node(ND_DIV, node, unary());
+        if (consume("*")) {
+            right = unary();
+            if (node->type->ty == PTR || right->type->ty == PTR)
+                error_at(token->str, "ptr * ptr is not defined");
+            node = new_node(ND_MUL, node, right, &int_type);
+        }
+        else if (consume("/")) {
+            right = unary();
+            if (node->type->ty == PTR || right->type->ty == PTR)
+                error_at(token->str, "ptr / ptr is not defined");
+            node = new_node(ND_DIV, node, right, &int_type);
+        }
         else
             return node;
     }
@@ -415,14 +461,32 @@ Node *mul() {
 
 // ("+" | "-")? primary  |  ("*" | "&") unary
 Node *unary() {
+    Node *node;
+    Type *tmp;
     if (consume("+"))
         return primary();
-    if (consume("-"))
-        return new_node(ND_SUB, new_node_num(0), primary());
-    if (consume("*"))
-        return new_node(ND_DEREF, unary(), NULL);
-    if (consume("&"))
-        return new_node(ND_ADDR, unary(), NULL);
+    if (consume("-")) {
+        node = primary();
+        if (node->type->ty == PTR)
+            error_at(token->str, "-ptr is not defined");
+        return new_node(ND_SUB, new_node_num(0), node, &int_type);
+    }
+    if (consume("*")) {
+        if (consume("&")) return unary();
+        node = unary();
+        if (node->type->ty != PTR)
+            error_at(token->str, "this is not ptr");
+        return new_node(ND_DEREF, node, NULL, node->type->ptr_to);
+    }
+    if (consume("&")) {
+        if (consume("&")) error_at(token->str, "&& is not usable");
+        if (consume("*")) return unary();
+        node = unary();
+        tmp = calloc(1, sizeof(Type));
+        tmp->ptr_to = node->type;
+        tmp->ty = PTR;
+        return new_node(ND_ADDR, node, NULL, tmp);
+    }
     return primary();
 }
 
@@ -441,6 +505,7 @@ Node *primary() {
             node->kind = ND_CALL;
             node->name = tok->str;
             node->len = tok->len;
+            node->type = &int_type; // TODO: fix
             Node *now_node = node;
             if(!consume(")")) {
                 for(;;) {
@@ -457,6 +522,7 @@ Node *primary() {
         LVar *lvar = find_lvar(tok);
         if (lvar) {
             node->lvar = lvar;
+            node->type = lvar->type;
         } else 
             error_at(tok->str, "undefined");
         return node;

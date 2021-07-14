@@ -40,9 +40,7 @@ void gen_global() {
         gen(code->node);
 
         // epilogue
-        printf("  pop rax\n");
-        printf("  mov rsp, rbp\n");
-        printf("  pop rbp\n");
+        printf("  leave\n");
         printf("  ret\n");
     }
 }

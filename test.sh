@@ -28,7 +28,7 @@ assert 1 "int main() {3 == 1 != 1;}"
 assert 1 "int main() {(1 < 1 + 2) + 1 >= 2;}"
 assert 2 "int main() {(1 > 1) + 2;}"
 assert 1 "int main() {1 + 1 == 2;}"
-assert 2 "int main() {int *a; a = 1; int b; b = a + 1; b;}"
+assert 2 "int main() {int a; a = 1; int b; b = a + 1; b;}"
 assert 3 "int main() {int foo; int ba; int n2a; foo = 1; ba = 3; n2a = 7; n2a-foo-ba;}"
 assert 4 "int main() {return 4; return 3;}"
 assert 10 "int main() {int i; i = 0; while(i < 10) i = i + 1; return i;}"
@@ -75,8 +75,18 @@ assert 233 "int main() { return fib(13); } int fib(int i) { if(i <= 0) return 0;
 #   print(h);
 #   return 0;
 # }"
-assert 3 "int main() {int x; int y; x = 3; y = &x; return *y;}"
-assert 3 "int main() {int x; int y; int z; x = 3; y = 5; z = &y + 8; return *z;}"
+assert 3 "int main() {int x; int *y; x = 3; y = &x; return *y;}"
+assert 3 "int main() {int x; int y; int *z; x = 3; y = 5; z = &y + 2; return *z;}"
 assert 5 "int main() {int x; int *y; y = &x; *y = 5; x;}"
+assert 0 "
+int main() {
+  int *ptr;
+  ptr = alloc4(1,2,3,4);
+  print(*ptr);
+  print(*(ptr + 1));
+  print(*(ptr + 2));
+  print(*(ptr + 3));
+}
+"
 
 echo OK

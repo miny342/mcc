@@ -99,6 +99,7 @@ struct Node {
     NodeKind kind; // ノードの型
     Node *lhs;     // 左辺
     Node *rhs;     // 右辺
+    Type *type;    // 計算時のtype
     int val;       // kind == ND_NUM
     LVar *lvar;    // kind == ND_LVAR
     char *name;    // kind == ND_CALL
@@ -120,7 +121,7 @@ struct Global {
 extern Global *code;
 
 Global *globalstmt();
-Node *new_node(NodeKind kind, Node *lhs, Node *rhs);
+Node *new_node(NodeKind kind, Node *lhs, Node *rhs, Type *type);
 Node *new_node_num(int val);
 void program();
 Node *stmt();
