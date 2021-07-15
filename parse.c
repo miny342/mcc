@@ -115,6 +115,12 @@ Token *tokenize(char *p) {
             continue;
         }
 
+        if (strncmp(p, "sizeof", 6) == 0 && !is_alnum(p[6])) {
+            cur = new_token(TK_SIZEOF, cur, p, 6);
+            p += 6;
+            continue;
+        }
+
         if (strncmp(p, "while", 5) == 0 && !is_alnum(p[5])) {
             cur = new_token(TK_WHILE, cur, p, 5);
             p += 5;
@@ -218,6 +224,13 @@ LVar *assign_lvar(Type *type) {
     lvar->type = type;
     locals = lvar;
     return lvar;
+}
+
+int sizeof_parse(Type *type) {
+    if (type->ty == INT)
+        return sizeof(int);
+    if (type->ty == PTR)
+        return sizeof(int*);
 }
 
 Node *new_node(NodeKind kind, Node *lhs, Node *rhs, Type *type) {
@@ -405,14 +418,10 @@ Node *add() {
             if(node->type->ty == PTR && right->type->ty == PTR) {
                 error_at(token->str, "ptr + ptrは未定義です");
             }
-            else if(node->type->ty == PTR && node->type->ptr_to->ty == INT)
-                node = new_node(ND_ADD, node, new_node(ND_MUL, new_node_num(4), right, &int_type), node->type);
-            else if(node->type->ty == PTR && node->type->ptr_to->ty == PTR)
-                node = new_node(ND_ADD, node, new_node(ND_MUL, new_node_num(8), right, &int_type), node->type);
-            else if(right->type->ty == PTR && right->type->ptr_to->ty == INT)
-                node = new_node(ND_ADD, new_node(ND_MUL, new_node_num(4), node, &int_type), right, right->type);
-            else if(right->type->ty == PTR && right->type->ptr_to->ty == PTR)
-                node = new_node(ND_ADD, new_node(ND_MUL, new_node_num(8), node, &int_type), right, right->type);
+            else if(node->type->ty == PTR)
+                node = new_node(ND_ADD, node, new_node(ND_MUL, new_node_num(sizeof_parse(node->type->ptr_to)), right, &int_type), node->type);
+            else if(right->type->ty == PTR)
+                node = new_node(ND_ADD, new_node(ND_MUL, new_node_num(sizeof_parse(node->type->ptr_to)), node, &int_type), right, right->type);
             else
                 node = new_node(ND_ADD, node, right, &int_type);
         }
@@ -420,14 +429,10 @@ Node *add() {
             right = mul();
             if(node->type->ty == PTR && right->type->ty == PTR)
                 error_at(token->str, "ptr - ptrは未定義です");
-            else if(node->type->ty == PTR && node->type->ptr_to->ty == INT)
-                node = new_node(ND_SUB, node, new_node(ND_MUL, new_node_num(4), right, &int_type), node->type);
-            else if(node->type->ty == PTR && node->type->ptr_to->ty == PTR)
-                node = new_node(ND_SUB, node, new_node(ND_MUL, new_node_num(8), right, &int_type), node->type);
-            else if(right->type->ty == PTR && right->type->ptr_to->ty == INT)
-                node = new_node(ND_SUB, new_node(ND_MUL, new_node_num(4), node, &int_type), right, right->type);
-            else if(right->type->ty == PTR && right->type->ptr_to->ty == PTR)
-                node = new_node(ND_SUB, new_node(ND_MUL, new_node_num(8), node, &int_type), right, right->type);
+            else if(node->type->ty == PTR)
+                node = new_node(ND_SUB, node, new_node(ND_MUL, new_node_num(sizeof_parse(node->type->ptr_to)), right, &int_type), node->type);
+            else if(right->type->ty == PTR)
+                node = new_node(ND_SUB, new_node(ND_MUL, new_node_num(sizeof_parse(node->type->ptr_to)), node, &int_type), right, right->type);
             else
                 node = new_node(ND_SUB, node, right, &int_type);
         }
@@ -459,7 +464,7 @@ Node *mul() {
     }
 }
 
-// ("+" | "-")? primary  |  ("*" | "&") unary
+// ("+" | "-")? primary  |  ("*" | "&") unary  |  sizeof unary
 Node *unary() {
     Node *node;
     Type *tmp;
@@ -487,6 +492,10 @@ Node *unary() {
         tmp->ty = PTR;
         return new_node(ND_ADDR, node, NULL, tmp);
     }
+    if (consumeTK(TK_SIZEOF)) {
+        node = unary();
+        return new_node_num(sizeof_parse(node->type));
+    } 
     return primary();
 }
 

@@ -19,6 +19,7 @@ typedef enum {
     TK_WHILE,    // while
     TK_FOR,      // for
     TK_INT,      // int
+    TK_SIZEOF,   // sizeof
 } TokenKind;
 
 typedef struct Token Token;

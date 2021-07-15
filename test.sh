@@ -78,7 +78,7 @@ assert 233 "int main() { return fib(13); } int fib(int i) { if(i <= 0) return 0;
 assert 3 "int main() {int x; int *y; x = 3; y = &x; return *y;}"
 assert 3 "int main() {int x; int y; int *z; x = 3; y = 5; z = &y + 2; return *z;}"
 assert 5 "int main() {int x; int *y; y = &x; *y = 5; x;}"
-assert 0 "
+assert 3 "
 int main() {
   int *ptr;
   ptr = alloc4(1,2,3,4);
@@ -86,6 +86,26 @@ int main() {
   print(*(ptr + 1));
   print(*(ptr + 2));
   print(*(ptr + 3));
+  return *(ptr + 2);
+}
+"
+assert 0 "
+int main() {
+  int p;
+  int *q;
+  print(sizeof p);
+  print(sizeof(q));
+
+  print(sizeof(p + 3));
+  print(sizeof(q + 3));
+  print(sizeof(*q));
+
+  print(sizeof(&p));
+
+  print(sizeof(1));
+  print(sizeof(sizeof(1)));
+
+  return 0;
 }
 "
 
