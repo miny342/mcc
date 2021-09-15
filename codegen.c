@@ -32,10 +32,7 @@ void gen_global() {
             }
         }
 
-        if(code->locals->offset % 16 != 0){
-            printf("  sub rsp, %d\n", (code->locals->offset - min(code->arglen, 6) * 8) + 8);}
-        else{
-            printf("  sub rsp, %d\n", (code->locals->offset - min(code->arglen, 6) * 8));}
+        printf("  sub rsp, %d\n", (code->locals->offset - min(code->arglen, 6) * 8) + (16 - code->locals->offset % 16) % 16);
 
         gen(code->node);
 

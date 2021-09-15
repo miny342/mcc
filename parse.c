@@ -2,7 +2,8 @@
 
 static Type int_type = {
     INT,
-    NULL
+    NULL,
+    0
 };
 
 // エラー箇所を報告する
@@ -167,7 +168,7 @@ Token *tokenize(char *p) {
             continue;
         }
 
-        if (strchr("+-*/()<>;={},&", *p)) {
+        if (strchr("+-*/()<>;={},&[]", *p)) {
             cur = new_token(TK_RESERVED, cur, p++, 1);
             continue;
         }
@@ -209,7 +210,39 @@ Type *eval_type() {
     return type;
 }
 
+int calc(Node *node) {
+    if (!node)
+        error("calc NULL error");
+    switch (node->kind) {
+        case ND_ADD:
+            return calc(node->lhs) + calc(node->rhs);
+        case ND_SUB:
+            return calc(node->lhs) - calc(node->rhs);
+        case ND_MUL:
+            return calc(node->lhs) * calc(node->rhs);
+        case ND_DIV:
+            return calc(node->lhs) / calc(node->rhs);
+        case ND_NUM:
+            return node->val;
+        default:
+            error_at(token->str, "calc error");
+    }
+
+}
+
+int sizeof_parse(Type *type) {
+    if (!type)
+        error_at(token->str, "type parse error");
+    if (type->ty == INT)
+        return sizeof(int);
+    if (type->ty == PTR)
+        return sizeof(int*);
+    if (type->ty == ARRAY)
+        return type->array_size * sizeof_parse(type->ptr_to);
+}
+
 LVar *assign_lvar(Type *type) {
+    int diffoffset = 8;
     Token *tok = consume_ident();
     if(!tok)
         error_at(token->str, "non variable");
@@ -217,20 +250,23 @@ LVar *assign_lvar(Type *type) {
     if (lvar)
         error_at(tok->str, "duplicate");
     lvar = calloc(1, sizeof(LVar));
+    if (consume("[")) {
+        Node *node = add();
+        expect("]");
+        Type *tmp;
+        tmp = type;
+        type->ptr_to = tmp;
+        type->array_size = calc(node);
+        type->ty = ARRAY;
+        diffoffset = typeof_parse(type);
+    }
     lvar->next = locals;
     lvar->name = tok->str;
     lvar->len = tok->len;
-    lvar->offset = locals->offset + 8;
+    lvar->offset = locals->offset + diffoffset;
     lvar->type = type;
     locals = lvar;
     return lvar;
-}
-
-int sizeof_parse(Type *type) {
-    if (type->ty == INT)
-        return sizeof(int);
-    if (type->ty == PTR)
-        return sizeof(int*);
 }
 
 Node *new_node(NodeKind kind, Node *lhs, Node *rhs, Type *type) {
@@ -432,7 +468,7 @@ Node *add() {
             else if(node->type->ty == PTR)
                 node = new_node(ND_SUB, node, new_node(ND_MUL, new_node_num(sizeof_parse(node->type->ptr_to)), right, &int_type), node->type);
             else if(right->type->ty == PTR)
-                node = new_node(ND_SUB, new_node(ND_MUL, new_node_num(sizeof_parse(node->type->ptr_to)), node, &int_type), right, right->type);
+                error_at(token->str, "int - ptrは未定義です");
             else
                 node = new_node(ND_SUB, node, right, &int_type);
         }
@@ -495,7 +531,7 @@ Node *unary() {
     if (consumeTK(TK_SIZEOF)) {
         node = unary();
         return new_node_num(sizeof_parse(node->type));
-    } 
+    }
     return primary();
 }
 
@@ -532,7 +568,7 @@ Node *primary() {
         if (lvar) {
             node->lvar = lvar;
             node->type = lvar->type;
-        } else 
+        } else
             error_at(tok->str, "undefined");
         return node;
     }
