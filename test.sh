@@ -108,5 +108,22 @@ int main() {
   return 0;
 }
 "
+assert 96 "
+int main() {
+  int a[3];
+  return sizeof(a) * sizeof(a + 1);
+  // 12 * 8
+}
+"
+assert 3 "
+int main() {
+  int a[2];
+  *a = 1;
+  *(a + 1) = 2;
+  int *p;
+  p = a;
+  return *p + *(p + 1);  // -> 3
+}
+"
 
 echo OK

@@ -152,6 +152,14 @@ Token *tokenize(char *p) {
             continue;
         }
 
+        if (strncmp(p, "//", 2) == 0) {
+            while(*p != '\n') {
+                p++;
+                continue;
+            }
+            continue;
+        }
+
         if (strncmp(p, "==", 2) == 0 || strncmp(p, "!=", 2) == 0 ||
             strncmp(p, "<=", 2) == 0 || strncmp(p, ">=", 2) == 0) {
                 cur = new_token(TK_RESERVED, cur, p, 2);
@@ -255,10 +263,11 @@ LVar *assign_lvar(Type *type) {
         expect("]");
         Type *tmp;
         tmp = type;
+        type = calloc(1, sizeof(Type));
         type->ptr_to = tmp;
         type->array_size = calc(node);
         type->ty = ARRAY;
-        diffoffset = typeof_parse(type);
+        diffoffset = sizeof_parse(type);
     }
     lvar->next = locals;
     lvar->name = tok->str;
@@ -523,6 +532,10 @@ Node *unary() {
         if (consume("&")) error_at(token->str, "&& is not usable");
         if (consume("*")) return unary();
         node = unary();
+        if (node->lvar != NULL && node->lvar->type->ty == ARRAY) {
+            node->lvar = NULL;
+            return node;
+        }
         tmp = calloc(1, sizeof(Type));
         tmp->ptr_to = node->type;
         tmp->ty = PTR;
@@ -530,15 +543,19 @@ Node *unary() {
     }
     if (consumeTK(TK_SIZEOF)) {
         node = unary();
-        return new_node_num(sizeof_parse(node->type));
+        if (node->lvar == NULL) {
+            return new_node_num(sizeof_parse(node->type));
+        } else {
+            return new_node_num(sizeof_parse(node->lvar->type));
+        }
     }
     return primary();
 }
 
-// num | "(" expr ")" | ident ("(" ")")?
+// num | "(" assign ")" | ident ("(" ")")?
 Node *primary() {
     if (consume("(")){
-        Node *node = expr();
+        Node *node = assign();
         expect(")");
         return node;
     }
@@ -567,7 +584,16 @@ Node *primary() {
         LVar *lvar = find_lvar(tok);
         if (lvar) {
             node->lvar = lvar;
-            node->type = lvar->type;
+            if (lvar->type->ty == ARRAY) {
+                node->type = calloc(1, sizeof(Type));
+                node->type->ty = PTR;
+                node->type->ptr_to = lvar->type->ptr_to;
+                Node *res = new_node(ND_ADDR, node, NULL, node->type);
+                res->lvar = node->lvar;
+                return res;
+            } else {
+                node->type = lvar->type;
+            }
         } else
             error_at(tok->str, "undefined");
         return node;

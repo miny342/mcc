@@ -13,3 +13,7 @@ int *alloc4(int a, int b, int c, int d) {
     ret[3] = d;
     return ret;
 }
+
+void printPTR(int *i) {
+    printf("%d\n", i[1]);
+}
