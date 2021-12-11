@@ -153,10 +153,17 @@ Token *tokenize(char *p) {
         }
 
         if (strncmp(p, "//", 2) == 0) {
-            while(*p != '\n') {
+            while(*p && *p != '\n') {
                 p++;
                 continue;
             }
+            continue;
+        }
+
+        if (strncmp(p, "/*", 2) == 0) {
+            char *tmp = strstr(p, "*/");
+            if (!tmp) error_at(p, "*/ が見つかりません");
+            p = tmp + 2;
             continue;
         }
 

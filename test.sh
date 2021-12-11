@@ -16,7 +16,7 @@ assert() {
     fi
 }
 
-assert 0 "int main() {0;}"
+assert 0 "int main() {0;} /* */"
 assert 42 "int main() {42;}"
 assert 21 "int main() {5+20-4;}"
 assert 42 "int main() {12 + 34 - 4;}"
