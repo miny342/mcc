@@ -145,7 +145,11 @@ void gen(Node *node) {
         case ND_LVAR:
             gen_lval(node);
             printf("  pop rax\n");
-            printf("  mov rax, [rax]\n");
+            if (sizeof_parse(node->lvar->type) == 4) {
+                printf("  mov eax, dword ptr [rax]\n");
+            } else {
+                printf("  mov rax, qword ptr [rax]\n");
+            }
             printf("  push rax\n");
             return;
         case ND_ASSIGN:
@@ -154,7 +158,11 @@ void gen(Node *node) {
 
             printf("  pop rdi\n");
             printf("  pop rax\n");
-            printf("  mov [rax], rdi\n");
+            if (sizeof_parse(node->lhs->type) == 4) {
+                printf("  mov dword ptr [rax], edi\n");
+            } else {
+                printf("  mov qword ptr [rax], rdi\n");
+            }
             printf("  push rdi\n");
             return;
         case ND_WHILE:
@@ -223,7 +231,11 @@ void gen(Node *node) {
         case ND_DEREF:
             gen(node->lhs);
             printf("  pop rax\n");
-            printf("  mov rax, [rax]\n");
+            if (sizeof_parse(node->lhs->type) == 4) {
+                printf("  mov eax, dword ptr [rax]\n");
+            } else {
+                printf("  mov rax, qword ptr [rax]\n");
+            }
             printf("  push rax\n");
             return;
     }
