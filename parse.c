@@ -6,6 +6,12 @@ static Type int_type = {
     0
 };
 
+static Type char_type = {
+    CHAR,
+    NULL,
+    0
+};
+
 // エラー箇所を報告する
 void error_at(char *loc, char *fmt, ...) {
     va_list ap;
@@ -134,6 +140,12 @@ Token *tokenize(char *p) {
             continue;
         }
 
+        if (strncmp(p, "char", 4) == 0 && !is_alnum(p[4])) {
+            cur = new_token(TK_CHAR, cur, p, 4);
+            p += 4;
+            continue;
+        }
+
         if (strncmp(p, "int", 3) == 0 && !is_alnum(p[3])) {
             cur = new_token(TK_INT, cur, p, 3);
             p += 3;
@@ -220,11 +232,15 @@ LVar *find_global_lvar(Token *tok) {
 }
 
 Type *eval_type() {
-    if(!consumeTK(TK_INT))
-        error_at(token->str, "no int");
     Type *tmp;
     Type *type = calloc(1, sizeof(Type));
-    type->ty = INT;
+    if(consumeTK(TK_INT)) {
+        type->ty = INT;
+    } else if (consumeTK(TK_CHAR)) {
+        type->ty = CHAR;
+    } else {
+        error_at(token->str, "no int or char");
+    }
     while(consume("*")) {
         tmp = calloc(1, sizeof(Type));
         tmp->ptr_to = type;
@@ -263,6 +279,8 @@ int sizeof_parse(Type *type) {
         return sizeof(int*);
     if (type->ty == ARRAY)
         return type->array_size * sizeof_parse(type->ptr_to);
+    if (type->ty == CHAR)
+        return sizeof(char);
 }
 
 LVar *assign_lvar(Type *type) {
@@ -462,7 +480,7 @@ Node *stmt() {
 }
 
 Node *expr() {
-    if(token->kind == TK_INT) {
+    if(token->kind == TK_INT || token->kind == TK_CHAR) {
         Type *type = eval_type();
         assign_lvar(type);
         return new_node_num(0);

@@ -140,6 +140,7 @@ void gen_block(Node *node) {
 // stackに値を一つ残す
 void gen(Node *node) {
     int loopval;
+    int size;
     if(node == NULL) return;
 
     switch (node->kind) {
@@ -156,8 +157,11 @@ void gen(Node *node) {
         case ND_LVAR:
             gen_lval(node);
             printf("  pop rax\n");
-            if (sizeof_parse(node->lvar->type) == 4) {
+            size = sizeof_parse(node->lvar->type);
+            if (size == 4) {
                 printf("  mov eax, dword ptr [rax]\n");
+            } else if (size == 1) {
+                printf("  movsx rax, byte ptr [rax]\n");
             } else {
                 printf("  mov rax, qword ptr [rax]\n");
             }
@@ -169,8 +173,11 @@ void gen(Node *node) {
 
             printf("  pop rdi\n");
             printf("  pop rax\n");
-            if (sizeof_parse(node->lhs->type) == 4) {
+            size = sizeof_parse(node->lhs->type);
+            if (size == 4) {
                 printf("  mov dword ptr [rax], edi\n");
+            } else if (size == 1) {
+                printf("  mov byte ptr [rax], dil\n");
             } else {
                 printf("  mov qword ptr [rax], rdi\n");
             }
@@ -242,8 +249,11 @@ void gen(Node *node) {
         case ND_DEREF:
             gen(node->lhs);
             printf("  pop rax\n");
-            if (sizeof_parse(node->lhs->type) == 4) {
+            size = sizeof_parse(node->lhs->type);
+            if (size == 4) {
                 printf("  mov eax, dword ptr [rax]\n");
+            } else if (size == 1) {
+                printf("  movsx eax, byte ptr [rax]\n");
             } else {
                 printf("  mov rax, qword ptr [rax]\n");
             }
@@ -252,8 +262,11 @@ void gen(Node *node) {
         case ND_GLOVAL_LVAR:
             gen_lval(node);
             printf("  pop rax\n");
-            if (sizeof_parse(node->lvar->type) == 4) {
+            size = sizeof_parse(node->lvar->type);
+            if (size == 4) {
                 printf("  mov eax, dword ptr [rax]\n");
+            } else if (size == 1) {
+                printf("  movsx eax, byte ptr [rax]\n");
             } else {
                 printf("  mov rax, qword ptr [rax]\n");
             }
