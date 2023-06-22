@@ -516,7 +516,7 @@ Node *mul() {
     }
 }
 
-// ("+" | "-")? primary  |  ("*" | "&") unary  |  sizeof unary
+// ("+" | "-")? primary ("[" expr "]")?  |  ("*" | "&") unary  |  sizeof unary
 Node *unary() {
     Node *node;
     Type *tmp;
@@ -556,7 +556,21 @@ Node *unary() {
             return new_node_num(sizeof_parse(node->lvar->type));
         }
     }
-    return primary();
+    node = primary();
+    if (consume("[")) {
+        Node *n = expr();
+        if (node->type->ty == PTR && n->type->ty == PTR) {
+            error("ptr + ptr");
+        } else if (node->type->ty == PTR) {
+            node = new_node(ND_DEREF, new_node(ND_ADD, node, new_node(ND_MUL, n, new_node_num(sizeof_parse(node->type->ptr_to)), &int_type), node->type), NULL, node->type->ptr_to);
+        } else if (n->type->ty == PTR) {
+            node = new_node(ND_DEREF, new_node(ND_ADD, new_node(ND_MUL, node, new_node_num(sizeof_parse(n->type->ptr_to)), &int_type), n, n->type), NULL, n->type->ptr_to);
+        } else {
+            error("arr deref");
+        }
+        expect("]");
+    }
+    return node;
 }
 
 // num | "(" assign ")" | ident ("(" ")")?

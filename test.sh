@@ -125,5 +125,17 @@ int main() {
   return *p + *(p + 1);  // -> 3
 }
 "
+assert 233 "
+int main() {
+  int a[13];
+  a[0] = 1;
+  a[1] = 1;
+  int i;
+  for(i = 2; i < 13; i = i + 1) {
+    a[i] = (i - 1)[a] + a[i - 2];
+  }
+  return 12[a];
+}
+"
 
 echo OK
