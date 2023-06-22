@@ -137,5 +137,17 @@ int main() {
   return 12[a];
 }
 "
+assert 12 "
+int a;
+int b[10];
+int main() {
+  a = 5;
+  b[5] = 4;
+  return foo() * 3;
+}
+int foo() {
+  return b[a];
+}
+"
 
 echo OK

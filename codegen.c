@@ -40,13 +40,24 @@ void gen_global() {
         printf("  leave\n");
         printf("  ret\n");
     }
+
+    printf(".data\n");
+    for(; globals->next; globals = globals->next) {
+        printf("%.*s:\n", globals->len, globals->name);
+        printf("  .zero %d\n", globals->offset);
+    }
 }
 
 void gen_lval(Node *node) {
     if(node->kind == ND_DEREF) return gen(node->lhs);
-    if (node->kind != ND_LVAR)
+    if (node->kind == ND_GLOVAL_LVAR) {
+        printf("  lea rax, %.*s[rip]\n", node->lvar->len, node->lvar->name);
+        printf("  push rax\n");
+        return;
+    }
+    if (node->kind != ND_LVAR) {
         error("代入の左辺が変数ではありません");
-
+    }
     printf("  mov rax, rbp\n");
     if(node->lvar->offset > 0)
         printf("  sub rax, %d\n", node->lvar->offset);
@@ -232,6 +243,16 @@ void gen(Node *node) {
             gen(node->lhs);
             printf("  pop rax\n");
             if (sizeof_parse(node->lhs->type) == 4) {
+                printf("  mov eax, dword ptr [rax]\n");
+            } else {
+                printf("  mov rax, qword ptr [rax]\n");
+            }
+            printf("  push rax\n");
+            return;
+        case ND_GLOVAL_LVAR:
+            gen_lval(node);
+            printf("  pop rax\n");
+            if (sizeof_parse(node->lvar->type) == 4) {
                 printf("  mov eax, dword ptr [rax]\n");
             } else {
                 printf("  mov rax, qword ptr [rax]\n");

@@ -70,6 +70,7 @@ struct LVar {
 };
 
 extern LVar *locals;
+extern LVar *globals;
 
 typedef enum {
     ND_ADD, // +
@@ -92,6 +93,7 @@ typedef enum {
     ND_CALL,  // call function
     ND_ADDR,  // address
     ND_DEREF,  // デリファレンス
+    ND_GLOVAL_LVAR, // グローバル変数
 } NodeKind;
 
 typedef struct Node Node;
@@ -108,10 +110,10 @@ struct Node {
     int len;       // kind == ND_CALL
 };
 
-typedef struct Global Global;
+typedef struct Function Function;
 
-struct Global {
-    Global *next;  // next Global or NULL
+struct Function {
+    Function *next;  // next Function or NULL
     Node *node;    // stmt
     LVar *locals;  // local variable
     int arglen;    // function args (not float) quantity
@@ -120,10 +122,10 @@ struct Global {
     Type *type;    // return type
 };
 
-extern Global *code;
+extern Function *code;
 
 int sizeof_parse(Type *type);
-Global *globalstmt();
+Function *globalstmt();
 Node *new_node(NodeKind kind, Node *lhs, Node *rhs, Type *type);
 Node *new_node_num(int val);
 void program();

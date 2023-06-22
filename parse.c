@@ -210,6 +210,15 @@ LVar *find_lvar(Token *tok) {
     return NULL;
 }
 
+LVar *find_global_lvar(Token *tok) {
+    for (LVar *var = globals; var; var = var->next) {
+        if (var->len == tok->len && !memcmp(tok->str, var->name, var->len)) {
+            return var;
+        }
+    }
+    return NULL;
+}
+
 Type *eval_type() {
     if(!consumeTK(TK_INT))
         error_at(token->str, "no int");
@@ -285,6 +294,33 @@ LVar *assign_lvar(Type *type) {
     return lvar;
 }
 
+LVar *assign_global_lvar(Type *type) {
+    Token *tok = consume_ident();
+    if(!tok)
+        error_at(token->str, "non variable");
+    LVar *lvar = find_global_lvar(tok);
+    if (lvar)
+        error_at(tok->str, "duplicate");
+    lvar = calloc(1, sizeof(LVar));
+    if (consume("[")) {
+        Node *node = add();
+        expect("]");
+        Type *tmp;
+        tmp = type;
+        type = calloc(1, sizeof(Type));
+        type->ptr_to = tmp;
+        type->array_size = calc(node);
+        type->ty = ARRAY;
+    }
+    lvar->next = globals;
+    lvar->name = tok->str;
+    lvar->len = tok->len;
+    lvar->offset = sizeof_parse(type);
+    lvar->type = type;
+    globals = lvar;
+    return lvar;
+}
+
 Node *new_node(NodeKind kind, Node *lhs, Node *rhs, Type *type) {
     Node *node = calloc(1, sizeof(Node));
     node->kind = kind;
@@ -303,52 +339,69 @@ Node *new_node_num(int val) {
 }
 
 void program() {
-    code = globalstmt();
-    Global *tmp = code;
+    // code = globalstmt();
+    // Function *tmp = code;
+    // while(!at_eof()) {
+    //     tmp->next = globalstmt();
+    //     if (tmp->next) {
+    //         tmp = tmp->next;
+    //     }
+    // }
+    while(!code) code = globalstmt();
+    Function *tmp = code;
     while(!at_eof()) {
         tmp->next = globalstmt();
-        tmp = tmp->next;
+        if (tmp->next) {
+            tmp = tmp->next;
+        }
     }
 }
 
-Global *globalstmt() {
+Function *globalstmt() {
     Type *type = eval_type();
+    Token *prev = token;
     Token *tok = consume_ident();
     LVar *lvar, *tmp;
-    if(!tok) error("this is not function");
-    Global *glob = calloc(1, sizeof(Global));
-    expect("(");
-    glob->name = tok->str;
-    glob->len = tok->len;
-    glob->type = type;
-    locals = calloc(1, sizeof(LVar));
-    if(!consume(")")) {
-         for(;;) {
-            type = eval_type();
-            assign_lvar(type);
-            glob->arglen += 1;
-            if(!consume(",")) break;
-        }
-        tmp = locals;
-        for(lvar = locals; lvar; lvar = lvar->next) {
-            if(lvar->offset > 6 * 8)
-                lvar->offset = 5 * 8 - lvar->offset;
-            if(lvar->offset == -16) {
-                locals = lvar->next;
-                lvar->next = NULL;
-                for(lvar = locals; lvar->next; lvar = lvar->next);
-                lvar->next = tmp;
-                break;
+    if(!tok) error("invalid token");
+    if (consume("(")) {
+        Function *glob = calloc(1, sizeof(Function));
+        glob->name = tok->str;
+        glob->len = tok->len;
+        glob->type = type;
+        locals = calloc(1, sizeof(LVar));
+        if(!consume(")")) {
+            for(;;) {
+                type = eval_type();
+                assign_lvar(type);
+                glob->arglen += 1;
+                if(!consume(",")) break;
             }
+            tmp = locals;
+            for(lvar = locals; lvar; lvar = lvar->next) {
+                if(lvar->offset > 6 * 8)
+                    lvar->offset = 5 * 8 - lvar->offset;
+                if(lvar->offset == -16) {
+                    locals = lvar->next;
+                    lvar->next = NULL;
+                    for(lvar = locals; lvar->next; lvar = lvar->next);
+                    lvar->next = tmp;
+                    break;
+                }
+            }
+            expect(")");
         }
-        expect(")");
+        tok = token;
+        expect("{");
+        token = tok;
+        glob->node = stmt();
+        glob->locals = locals;
+        return glob;
+    } else {
+        token = prev;
+        assign_global_lvar(type);
+        expect(";");
+        return NULL;
     }
-    tok = token;
-    expect("{");
-    token = tok;
-    glob->node = stmt();
-    glob->locals = locals;
-    return glob;
 }
 
 Node *stmt() {
@@ -615,8 +668,25 @@ Node *primary() {
             } else {
                 node->type = lvar->type;
             }
-        } else
-            error_at(tok->str, "undefined");
+        } else {
+            lvar = find_global_lvar(tok);
+            if (lvar) {
+                node->kind = ND_GLOVAL_LVAR;
+                node->lvar = lvar;
+                if (lvar->type->ty == ARRAY) {
+                    node->type = calloc(1, sizeof(Type));
+                    node->type->ty = PTR;
+                    node->type->ptr_to = lvar->type->ptr_to;
+                    Node *res = new_node(ND_ADDR, node, NULL, node->type);
+                    res->lvar = node->lvar;
+                    return res;
+                } else {
+                    node->type = lvar->type;
+                }
+            } else {
+                error_at(tok->str, "undefined");
+            }
+        }
         return node;
     }
 

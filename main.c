@@ -2,8 +2,9 @@
 
 Token *token;
 char *user_input;
-Global *code;
+Function *code;
 LVar *locals;
+LVar *globals;
 int loopcnt = 0;
 
 int main(int argc, char **argv){
@@ -13,6 +14,7 @@ int main(int argc, char **argv){
     }
 
     locals = calloc(1, sizeof(LVar));
+    globals = calloc(1, sizeof(LVar));
 
     user_input = argv[1];
 
