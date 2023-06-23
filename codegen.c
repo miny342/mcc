@@ -260,7 +260,7 @@ void gen(Node *node) {
         case ND_DEREF:
             gen(node->lhs);
             printf("  pop rax\n");
-            size = sizeof_parse(node->lhs->type);
+            size = sizeof_parse(node->lhs->type->ptr_to);
             if (size == 4) {
                 printf("  mov eax, dword ptr [rax]\n");
             } else if (size == 1) {
