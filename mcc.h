@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 
 // tokenize.c
 
@@ -40,6 +41,8 @@ extern Token *token;
 
 // 入力プログラム
 extern char *user_input;
+
+extern char *filename;
 
 void error_at(char *loc, char *fmt, ...);
 void error(char *fmt, ...);
