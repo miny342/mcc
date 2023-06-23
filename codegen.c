@@ -36,11 +36,16 @@ void gen_global() {
             }
         }
 
-        printf("  sub rsp, %d\n", (code->locals->offset - min(code->arglen, 6) * 8) + (16 - code->locals->offset % 16) % 16);
+        int sub = (code->locals->offset - min(code->arglen, 6) * 8) + (16 - code->locals->offset % 16) % 16;
+
+        if (sub > 0) {
+            printf("  sub rsp, %d\n", sub);
+        }
 
         gen(code->node);
 
         // epilogue
+        printf("  xor eax, eax\n");
         printf("  leave\n");
         printf("  ret\n");
     }
@@ -59,10 +64,13 @@ void gen_global() {
 }
 
 void gen_lval(Node *node) {
-    if(node->kind == ND_DEREF) return gen(node->lhs);
+    if(node->kind == ND_DEREF) {
+        gen(node->lhs);
+        printf("  pop rax\n");
+        return;
+    }
     if (node->kind == ND_GLOVAL_LVAR) {
         printf("  lea rax, %.*s[rip]\n", node->lvar->len, node->lvar->name);
-        printf("  push rax\n");
         return;
     }
     if (node->kind != ND_LVAR) {
@@ -71,9 +79,8 @@ void gen_lval(Node *node) {
     printf("  mov rax, rbp\n");
     if(node->lvar->offset > 0)
         printf("  sub rax, %d\n", node->lvar->offset);
-    else
+    else if(node->lvar->offset < 0)
         printf("  add rax, %d\n", -node->lvar->offset);
-    printf("  push rax\n");
 }
 
 void gen_callstack(Node *node, int num) {
@@ -127,24 +134,34 @@ void gen_call(Node *node) {
     stack = gen_callregister(node, 0);
     printf("  xor rax, rax\n");
     printf("  call %.*s\n", node->len, node->name);
-    printf("  add rsp, %d\n", stack * 8);
-    printf("  push rax\n");
-}
-
-void gen_block_acc(Node *node) {
-    if(node->lhs) {
-        gen(node->lhs);
-        printf("  pop rax\n");
-        gen_block_acc(node->rhs);
+    if (stack > 0) {
+        printf("  add rsp, %d\n", stack * 8);
     }
+    printf("  push rax\n");
 }
 
 void gen_block(Node *node) {
     if (node->kind != ND_BLOCK)
         error("this is not block");
 
-    gen_block_acc(node);
+    Node *n = node;
+    while (n->rhs) {
+        if (n->lhs) {
+            gen(n->lhs);
+            printf("  pop rax\n");
+        }
+        n = n->rhs;
+    }
     printf("  push rax\n");
+}
+
+// stackに値を残す代わりにexprの値をraxに入れる
+// nodeがexprでparseされていること
+void gen_expr(Node *node) {
+    if (node) {
+        gen(node);
+        printf("  pop rax\n");
+    }
 }
 
 // nodeからアセンブリを吐く
@@ -156,8 +173,7 @@ void gen(Node *node) {
 
     switch (node->kind) {
         case ND_RETURN:
-            gen(node->lhs);
-            printf("  pop rax\n");
+            gen_expr(node->lhs);
             printf("  mov rsp, rbp\n");
             printf("  pop rbp\n");
             printf("  ret\n");
@@ -167,7 +183,6 @@ void gen(Node *node) {
             return;
         case ND_LVAR:
             gen_lval(node);
-            printf("  pop rax\n");
             size = sizeof_parse(node->lvar->type);
             if (size == 4) {
                 printf("  mov eax, dword ptr [rax]\n");
@@ -180,6 +195,7 @@ void gen(Node *node) {
             return;
         case ND_ASSIGN:
             gen_lval(node->lhs);
+            printf("  push rax\n");
             gen(node->rhs);
 
             printf("  pop rdi\n");
@@ -198,8 +214,7 @@ void gen(Node *node) {
             loopval = loopcnt;
             loopcnt += 1;
             printf(".Lbegin%d:\n", loopval);
-            gen(node->lhs);
-            printf("  pop rax\n");
+            gen_expr(node->lhs);
             printf("  cmp rax, 0\n");
             printf("  je .Lend%d\n", loopval);
             gen(node->rhs);
@@ -211,8 +226,7 @@ void gen(Node *node) {
         case ND_IF:
             loopval = loopcnt;
             loopcnt += 1;
-            gen(node->lhs);
-            printf("  pop rax\n");
+            gen_expr(node->lhs);
             printf("  cmp rax, 0\n");
             if(node->rhs->kind == ND_ELSE) {
                 printf("  je .Lelse%d\n", loopval);
@@ -234,16 +248,14 @@ void gen(Node *node) {
         case ND_FOR:
             loopval = loopcnt;
             loopcnt += 1;
-            gen(node->lhs);
+            gen_expr(node->lhs);
             printf(".Lbegin%d:\n", loopval);
-            gen(node->rhs->lhs);
-            printf("  pop rax\n");
+            gen_expr(node->rhs->lhs);
             printf("  cmp rax, 0\n");
             printf("  je .Lend%d\n", loopval);
             gen(node->rhs->rhs->rhs);
             printf("  pop rax\n");
-            gen(node->rhs->rhs->lhs);
-            printf("  pop rax\n");
+            gen_expr(node->rhs->rhs->lhs);
             printf("  jmp .Lbegin%d\n", loopval);
             printf(".Lend%d:\n", loopval);
             printf("  push rax\n");
@@ -256,6 +268,7 @@ void gen(Node *node) {
             return;
         case ND_ADDR:
             gen_lval(node->lhs);
+            printf("  push rax\n");
             return;
         case ND_DEREF:
             gen(node->lhs);
@@ -272,7 +285,6 @@ void gen(Node *node) {
             return;
         case ND_GLOVAL_LVAR:
             gen_lval(node);
-            printf("  pop rax\n");
             size = sizeof_parse(node->lvar->type);
             if (size == 4) {
                 printf("  mov eax, dword ptr [rax]\n");

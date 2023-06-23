@@ -218,7 +218,7 @@ Token *tokenize(char *p) {
                 continue;
             }
 
-        if (isalpha(*p)) {
+        if (isalpha(*p) || *p == '_') {
             lvar_length = 0;
             while(is_alnum(p[lvar_length]))
                 lvar_length++;
@@ -339,6 +339,9 @@ LVar *assign_lvar(Type *type) {
     lvar->name = tok->str;
     lvar->len = tok->len;
     lvar->offset = locals->offset + diffoffset;
+    if (lvar->offset % 8 != 0) {
+        lvar->offset += (8 - lvar->offset % 8);
+    }
     lvar->type = type;
     locals = lvar;
     return lvar;
@@ -487,6 +490,8 @@ Node *stmt() {
         if(!consume(";")) {
             node->rhs->lhs = expr();
             expect(";");
+        } else {
+            node->rhs->lhs = new_node_num(1);
         }
         if(!consume(")")) {
             node->rhs->rhs->lhs = expr();
@@ -515,7 +520,7 @@ Node *expr() {
     if(token->kind == TK_INT || token->kind == TK_CHAR) {
         Type *type = eval_type();
         assign_lvar(type);
-        return new_node_num(0);
+        return NULL;
     }
     return assign();
 }
