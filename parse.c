@@ -179,6 +179,15 @@ Token *tokenize(char *p) {
             continue;
         }
 
+        if (*p == '\"') {
+            char *tmp = strstr(p + 1, "\"");
+            if (!tmp) error_at(p, "\" が見つかりません");
+            tmp++;
+            cur = new_token(TK_STR, cur, p, tmp - p);
+            p = tmp;
+            continue;
+        }
+
         if (strncmp(p, "==", 2) == 0 || strncmp(p, "!=", 2) == 0 ||
             strncmp(p, "<=", 2) == 0 || strncmp(p, ">=", 2) == 0) {
                 cur = new_token(TK_RESERVED, cur, p, 2);
@@ -644,11 +653,28 @@ Node *unary() {
     return node;
 }
 
-// num | "(" assign ")" | ident ("(" ")")?
+// num | "(" assign ")" | ident ("(" ")")? | String
 Node *primary() {
     if (consume("(")){
         Node *node = assign();
         expect(")");
+        return node;
+    }
+
+    if (token->kind == TK_STR) {
+        String *s = calloc(1, sizeof(String));
+        s->next = strs;
+        s->offset = strs->offset + 1;
+        s->tok = token;
+        strs = s;
+        token = token->next;
+
+        Node *node = calloc(1, sizeof(Node));
+        node->kind = ND_STR;
+        node->s = s;
+        node->type = calloc(1, sizeof(Type));
+        node->type->ty = PTR;
+        node->type->ptr_to = &char_type;
         return node;
     }
 

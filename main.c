@@ -5,6 +5,7 @@ char *user_input;
 Function *code;
 LVar *locals;
 LVar *globals;
+String *strs;
 int loopcnt = 0;
 
 int main(int argc, char **argv){
@@ -15,16 +16,13 @@ int main(int argc, char **argv){
 
     locals = calloc(1, sizeof(LVar));
     globals = calloc(1, sizeof(LVar));
+    strs = calloc(1, sizeof(String));
 
     user_input = argv[1];
 
     // トークナイズする
     token = tokenize(user_input);
     program();
-
-    // アセンブリの前半部分を出力
-    printf(".intel_syntax noprefix\n");
-    printf(".globl main\n");
 
     gen_global();
     return 0;

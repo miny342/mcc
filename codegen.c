@@ -2,6 +2,10 @@
 #define min(x, y) ((x) <= (y) ? (x) : (y))
 
 void gen_global() {
+    // アセンブリの前半部分を出力
+    printf(".intel_syntax noprefix\n");
+    printf(".globl main\n");
+
     for(; code; code = code->next) {
         printf("%.*s:\n", code->len, code->name);
 
@@ -45,6 +49,12 @@ void gen_global() {
     for(; globals->next; globals = globals->next) {
         printf("%.*s:\n", globals->len, globals->name);
         printf("  .zero %d\n", globals->offset);
+    }
+
+    printf(".section .rodata\n");
+    for(; strs->next; strs = strs->next) {
+        printf(".LC%d:\n", strs->offset);
+        printf("  .string %.*s\n", strs->tok->len, strs->tok->str);
     }
 }
 
@@ -115,6 +125,7 @@ void gen_call(Node *node) {
 
     gen_callstack(node, 0);
     stack = gen_callregister(node, 0);
+    printf("  xor rax, rax\n");
     printf("  call %.*s\n", node->len, node->name);
     printf("  add rsp, %d\n", stack * 8);
     printf("  push rax\n");
@@ -270,6 +281,10 @@ void gen(Node *node) {
             } else {
                 printf("  mov rax, qword ptr [rax]\n");
             }
+            printf("  push rax\n");
+            return;
+        case ND_STR:
+            printf("  lea rax, .LC%d[rip]\n", node->s->offset);
             printf("  push rax\n");
             return;
     }

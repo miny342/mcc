@@ -159,5 +159,15 @@ int main() {
   return x[0] + y;  // → 3
 }
 "
+assert 1 "
+int main() {
+  char *c;
+  char *d;
+  c = \"anna\";
+  d = \"yuriko\";
+  printf(\"%s %s %d\\n\", c, d, 1000);
+  return 1;
+}
+"
 
 echo OK

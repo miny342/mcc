@@ -20,7 +20,8 @@ typedef enum {
     TK_FOR,      // for
     TK_INT,      // int
     TK_SIZEOF,   // sizeof
-    TK_CHAR,
+    TK_CHAR,     // char
+    TK_STR,      // string
 } TokenKind;
 
 typedef struct Token Token;
@@ -73,6 +74,16 @@ struct LVar {
 extern LVar *locals;
 extern LVar *globals;
 
+typedef struct String String;
+
+struct String {
+    String *next;  // 次の変数
+    Token *tok;  // 文字列のトークン
+    int offset;  // ラベルoffset
+};
+
+extern String *strs;
+
 typedef enum {
     ND_ADD, // +
     ND_SUB, // -
@@ -95,6 +106,7 @@ typedef enum {
     ND_ADDR,  // address
     ND_DEREF,  // デリファレンス
     ND_GLOVAL_LVAR, // グローバル変数
+    ND_STR, // 文字列
 } NodeKind;
 
 typedef struct Node Node;
@@ -109,6 +121,7 @@ struct Node {
     LVar *lvar;    // kind == ND_LVAR
     char *name;    // kind == ND_CALL
     int len;       // kind == ND_CALL
+    String *s;     // kind == ND_STR
 };
 
 typedef struct Function Function;
