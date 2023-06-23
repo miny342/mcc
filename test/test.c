@@ -120,12 +120,12 @@ assert(t29, {
 
 assert(t30, {
   char x[3];
-  x[0] = -1;
+  x[0] = -1; // 255
   x[1] = 2;
   int y;
   y = 4;
-  return x[0] + y;  // → 3
-}, 3)
+  return x[0] + y;  // → 259
+}, 259)
 assert(t31, {
   char *c;
   char *d;
@@ -140,11 +140,71 @@ assert(t32, {
     for(; i < 4; i = i + 1) {}
 }, 0)
 
+char mul(char l, char r) {
+    char re;
+    char v;
+    re = 0;
+    v = r;
+    while(l) {
+        if (l & 1) {
+            re = re ^ v;
+        }
+        if (v & (1 << 7)) {
+            v = (v << 1) ^ 27;
+        } else {
+            v = v << 1;
+        }
+        l = l >> 1;
+    }
+    return re;
+}
+char rotl(char v, int c) {
+    return v << c | v >> (8 - c);
+}
+assert(t33, {
+    char expt[256];
+    char logt[256];
+    char v;
+    v = 1;
+    int i;
+    for(i = 0; i < 256; i = i + 1) {
+        expt[i] = v;
+        logt[v] = i;
+        v = mul(3, v);
+    }
+    char sb[256];
+    char inv;
+    sb[0] = 99;
+    for(i = 1; i < 256; i = i + 1) {
+        inv = expt[255 - logt[i]];
+        sb[i] = inv ^ rotl(inv, 1) ^ rotl(inv, 2) ^ rotl(inv, 3) ^ rotl(inv, 4) ^ 99;
+    }
+    return sb[134];
+}, 68)
+assert(t34, {
+    int mod;
+    mod = 1000000007;
+    int r;
+    int x;
+    int n;
+    n = 1000;
+    r = 1;
+    x = 2;
+    while (n) {
+        if (n & 1) {
+            r = r * x % mod;
+        }
+        x = x * x % mod;
+        n = n >> 1;
+    }
+    return r;
+}, 688423210)
+
 int main() {
     t0();t1();t2();t3();t4();t5();t6();t7();t8();t9();t10();
     t11();t12();t13();t14();t15();t16();t17();t18();t19();t20();
     t21();t22();t23();t24();t25();t26();t27();t28();t29();t30();
-    t31();t32();
+    t31();t32();t33();t34();
 
     printf("OK\n");
 }

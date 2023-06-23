@@ -212,7 +212,9 @@ Token *tokenize(char *p) {
         }
 
         if (strncmp(p, "==", 2) == 0 || strncmp(p, "!=", 2) == 0 ||
-            strncmp(p, "<=", 2) == 0 || strncmp(p, ">=", 2) == 0) {
+            strncmp(p, "<=", 2) == 0 || strncmp(p, ">=", 2) == 0 ||
+            strncmp(p, "<<", 2) == 0 || strncmp(p, ">>", 2) == 0 ||
+            strncmp(p, "&&", 2) == 0 || strncmp(p, "||", 2) == 0) {
                 cur = new_token(TK_RESERVED, cur, p, 2);
                 p += 2;
                 continue;
@@ -227,7 +229,7 @@ Token *tokenize(char *p) {
             continue;
         }
 
-        if (strchr("+-*/()<>;={},&[]", *p)) {
+        if (strchr("+-*/()<>;={},&[]%^|", *p)) {
             cur = new_token(TK_RESERVED, cur, p++, 1);
             continue;
         }
@@ -525,14 +527,75 @@ Node *expr() {
     return assign();
 }
 
+// logic_or ( = assign )*
 Node *assign() {
-    Node *node = equality();
+    Node *node = logic_or();
 
     if(consume("=")) {
         Node *right = assign();
         node = new_node(ND_ASSIGN, node, right, right->type);
     }
     return node;
+}
+
+// logic_and ( || logic_and )*
+Node *logic_or() {
+    Node *node = logic_and();
+
+    for(;;) {
+        if (consume("||"))
+            node = new_node(ND_OR, node, logic_and(), node->type);
+        else
+            return node;
+    }
+}
+
+// bit_or ( && bit_or )*
+Node *logic_and() {
+    Node *node = bit_or();
+
+    for(;;) {
+        if (consume("&&"))
+            node = new_node(ND_AND, node, bit_or(), node->type);
+        else
+            return node;
+    }
+}
+
+// bit_xor ( | bit_xor )*
+Node *bit_or() {
+    Node *node = bit_xor();
+
+    for(;;) {
+        if (consume("|"))
+            node = new_node(ND_BITOR, node, bit_xor(), node->type);
+        else
+            return node;
+    }
+}
+
+// bit_and ( ^ bit_and )*
+Node *bit_xor() {
+    Node *node = bit_and();
+
+    for(;;) {
+        if (consume("^"))
+            node = new_node(ND_BITXOR, node, bit_and(), node->type);
+        else
+            return node;
+    }
+}
+
+// equality ( & equality )*
+Node *bit_and() {
+    Node *node = equality();
+
+    for(;;) {
+        if (consume("&"))
+            node = new_node(ND_BITAND, node, equality(), node->type);
+        else
+            return node;
+    }
 }
 
 // relational ("==" relational | "!=" relational)*
@@ -549,19 +612,34 @@ Node *equality() {
     }
 }
 
-// add ("<" add | "<=" add | ">" add | ">=" add)*
+// shift ("<" shift | "<=" shift | ">" shift | ">=" shift)*
 Node *relational() {
-    Node *node = add();
+    Node *node = shift();
 
     for(;;) {
         if (consume("<="))
-            node = new_node(ND_LE, node, add(), &int_type);
+            node = new_node(ND_LE, node, shift(), &int_type);
         else if (consume(">="))
-            node = new_node(ND_LE, add(), node, &int_type);
+            node = new_node(ND_LE, shift(), node, &int_type);
         else if (consume("<"))
-            node = new_node(ND_LT, node, add(), &int_type);
+            node = new_node(ND_LT, node, shift(), &int_type);
         else if (consume(">"))
-            node = new_node(ND_LT, add(), node, &int_type);
+            node = new_node(ND_LT, shift(), node, &int_type);
+        else
+            return node;
+    }
+}
+
+// add ( << add | >> add )*
+Node *shift() {
+    Node *node = add();
+
+    for(;;) {
+        if (consume("<<")) {
+            node = new_node(ND_LSHIFT, node, add(), node->type);
+        } else if (consume(">>")) {
+            node = new_node(ND_RSHIFT, node, add(), node->type);
+        }
         else
             return node;
     }
@@ -601,7 +679,7 @@ Node *add() {
     }
 }
 
-// unary ( * unary | / unary )*
+// unary ( * unary | / unary | % unary )*
 Node *mul() {
     Node *node = unary();
     Node *right;
@@ -618,6 +696,12 @@ Node *mul() {
             if (node->type->ty == PTR || right->type->ty == PTR)
                 error_at(token->str, "ptr / ptr is not defined");
             node = new_node(ND_DIV, node, right, &int_type);
+        }
+        else if (consume("%")) {
+            right = unary();
+            if (node->type->ty == PTR || right->type->ty == PTR)
+                error_at(token->str, "ptr %% ptr is not defined");
+            node = new_node(ND_REMINDER, node, right, &int_type);
         }
         else
             return node;

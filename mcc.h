@@ -110,6 +110,15 @@ typedef enum {
     ND_DEREF,  // デリファレンス
     ND_GLOVAL_LVAR, // グローバル変数
     ND_STR, // 文字列
+    ND_REMINDER, // %
+    ND_LSHIFT, // <<
+    ND_RSHIFT, // >>
+    ND_BITAND, // &
+    ND_BITXOR, // ^
+    ND_BITOR,  // |
+    ND_AND, // &&
+    ND_OR, // ||
+
 } NodeKind;
 
 typedef struct Node Node;
@@ -149,8 +158,14 @@ void program();
 Node *stmt();
 Node *expr();
 Node *assign();
+Node *logic_or();
+Node *logic_and();
+Node *bit_or();
+Node *bit_xor();
+Node *bit_and();
 Node *equality();
 Node *relational();
+Node *shift();
 Node *add();
 Node *mul();
 Node *unary();
