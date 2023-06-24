@@ -185,7 +185,7 @@ void gen(Node *node) {
             gen_lval(node);
             size = sizeof_parse(node->lvar->type);
             if (size == 4) {
-                printf("  mov eax, dword ptr [rax]\n");
+                printf("  movsx rax, dword ptr [rax]\n");
             } else if (size == 1) {
                 printf("  movzx rax, byte ptr [rax]\n");
             } else {
@@ -275,9 +275,9 @@ void gen(Node *node) {
             printf("  pop rax\n");
             size = sizeof_parse(node->lhs->type->ptr_to);
             if (size == 4) {
-                printf("  mov eax, dword ptr [rax]\n");
+                printf("  movsx rax, dword ptr [rax]\n");
             } else if (size == 1) {
-                printf("  movzx eax, byte ptr [rax]\n");
+                printf("  movzx rax, byte ptr [rax]\n");
             } else {
                 printf("  mov rax, qword ptr [rax]\n");
             }
@@ -287,9 +287,9 @@ void gen(Node *node) {
             gen_lval(node);
             size = sizeof_parse(node->lvar->type);
             if (size == 4) {
-                printf("  mov eax, dword ptr [rax]\n");
+                printf("  movsx rax, dword ptr [rax]\n");
             } else if (size == 1) {
-                printf("  movzx eax, byte ptr [rax]\n");
+                printf("  movzx rax, byte ptr [rax]\n");
             } else {
                 printf("  mov rax, qword ptr [rax]\n");
             }
