@@ -266,7 +266,6 @@ LVar *find_global_lvar(Token *tok) {
 }
 
 Type *eval_type() {
-    Type *tmp;
     Type *type = calloc(1, sizeof(Type));
     if(consumeTK(TK_INT)) {
         type->ty = INT;
@@ -274,12 +273,6 @@ Type *eval_type() {
         type->ty = CHAR;
     } else {
         error_at(token->str, "no int or char");
-    }
-    while(consume("*")) {
-        tmp = calloc(1, sizeof(Type));
-        tmp->ptr_to = type;
-        tmp->ty = PTR;
-        type = tmp;
     }
     return type;
 }
@@ -335,6 +328,13 @@ int sizeof_parse(Type *type) {
 
 LVar *assign_lvar(Type *type) {
     int diffoffset = 8;
+    Type *tmp = NULL;
+    while(consume("*")) {
+        tmp = calloc(1, sizeof(Type));
+        tmp->ptr_to = type;
+        tmp->ty = PTR;
+        type = tmp;
+    }
     Token *tok = consume_ident();
     if(!tok)
         error_at(token->str, "non variable");
@@ -342,20 +342,27 @@ LVar *assign_lvar(Type *type) {
     if (lvar)
         error_at(tok->str, "duplicate");
     lvar = calloc(1, sizeof(LVar));
+    lvar->next = locals;
+    lvar->name = tok->str;
+    lvar->len = tok->len;
     if (consume("[")) {
-        Node *node = add();
-        expect("]");
         Type *tmp;
         tmp = type;
         type = calloc(1, sizeof(Type));
         type->ptr_to = tmp;
-        type->array_size = calc(node);
         type->ty = ARRAY;
+        if (consume("]")) {
+            lvar->type = type;
+            lvar->offset = -1;
+            return lvar;
+        }
+
+        Node *node = add();
+        expect("]");
+        type->array_size = calc(node);
         diffoffset = sizeof_parse(type);
     }
-    lvar->next = locals;
-    lvar->name = tok->str;
-    lvar->len = tok->len;
+
     lvar->offset = locals->offset + diffoffset;
     if (lvar->offset % 8 != 0) {
         lvar->offset += (8 - lvar->offset % 8);
@@ -363,6 +370,15 @@ LVar *assign_lvar(Type *type) {
     lvar->type = type;
     locals = lvar;
     return lvar;
+}
+
+void assign_lvar_arr(LVar *lvar, int len) {
+    lvar->type->array_size = len;
+    lvar->offset = locals->offset + sizeof_parse(lvar->type);
+    if (lvar->offset % 8 != 0) {
+        lvar->offset += (8 - lvar->offset % 8);
+    }
+    locals = lvar;
 }
 
 LVar *assign_global_lvar(Type *type) {
@@ -390,6 +406,23 @@ LVar *assign_global_lvar(Type *type) {
     lvar->type = type;
     globals = lvar;
     return lvar;
+}
+
+Node *lvar_node(LVar *lvar) {
+    Node *node = calloc(1, sizeof(Node));
+    node->kind = ND_LVAR;
+    node->lvar = lvar;
+    if (lvar->type->ty == ARRAY) {
+        node->type = calloc(1, sizeof(Type));
+        node->type->ty = PTR;
+        node->type->ptr_to = lvar->type->ptr_to;
+        Node *res = new_node(ND_ADDR, node, NULL, node->type);
+        res->lvar = node->lvar;
+        return res;
+    } else {
+        node->type = lvar->type;
+    }
+    return node;
 }
 
 Node *new_node(NodeKind kind, Node *lhs, Node *rhs, Type *type) {
@@ -422,6 +455,13 @@ void program() {
 
 Function *globalstmt() {
     Type *type = eval_type();
+    Type *ttmp;
+    while(consume("*")) {
+        ttmp = calloc(1, sizeof(Type));
+        ttmp->ptr_to = type;
+        ttmp->ty = PTR;
+        type = ttmp;
+    }
     Token *prev = token;
     Token *tok = consume_ident();
     LVar *lvar, *tmp;
@@ -526,12 +566,103 @@ Node *stmt() {
     return node;
 }
 
-// (int | char) indent ([number])? (= assign)? | assign
+// (int | char) indent ([number])? (= assign | )? | assign
 Node *expr() {
     if(token->kind == TK_INT || token->kind == TK_CHAR) {
         Type *type = eval_type();
-        assign_lvar(type);
-        return new_node(ND_DECLARATION, NULL, NULL, NULL);
+        LVar *lvar = assign_lvar(type);
+        Node *node = NULL;
+        if (consume("=")) {
+            if (lvar->type->ty == ARRAY) {
+                Node *ptr_node = calloc(1, sizeof(Node));
+                ptr_node->kind = ND_LVAR;
+                ptr_node->lvar = lvar;
+
+                ptr_node->type = calloc(1, sizeof(Type));
+                ptr_node->type->ty = PTR;
+                ptr_node->type->ptr_to = lvar->type->ptr_to;
+
+                ptr_node = new_node(ND_ADDR, ptr_node, NULL, ptr_node->type);
+                ptr_node->lvar = lvar;
+
+                node = calloc(1, sizeof(Node));
+                node->kind = ND_BLOCK;
+                Node *block = node;
+
+                int i = 0;
+                int size = sizeof_parse(lvar->type->ptr_to);
+                if (consume("{")) {
+                    if (!consume("}")) {
+                        block->lhs = new_node(ND_ASSIGN, new_node(ND_DEREF, new_node(ND_ADD, new_node_num((i++) * size), ptr_node, ptr_node->type), NULL, ptr_node->type->ptr_to), assign(), ptr_node->type->ptr_to);
+                        block->rhs = calloc(1, sizeof(Node));
+                        block = block->rhs;
+                        block->kind = ND_BLOCK;
+                        while(consume(",")) {
+                            block->lhs = new_node(ND_ASSIGN, new_node(ND_DEREF, new_node(ND_ADD, new_node_num((i++) * size), ptr_node, ptr_node->type), NULL, ptr_node->type->ptr_to), assign(), ptr_node->type->ptr_to);
+                            block->rhs = calloc(1, sizeof(Node));
+                            block = block->rhs;
+                            block->kind = ND_BLOCK;
+                        }
+                        if (lvar->offset != -1) {
+                            for(; i < lvar->type->array_size; i++) {
+                                block->lhs = new_node(ND_ASSIGN, new_node(ND_DEREF, new_node(ND_ADD, new_node_num(i * size), ptr_node, ptr_node->type), NULL, ptr_node->type->ptr_to), new_node_num(0), ptr_node->type->ptr_to);
+                                block->rhs = calloc(1, sizeof(Node));
+                                block = block->rhs;
+                                block->kind = ND_BLOCK;
+                            }
+                            if (i > lvar->type->array_size) {
+                                error_at(token->str, "配列が長すぎます");
+                            }
+                        } else {
+                            assign_lvar_arr(lvar, i);
+                        }
+                        expect("}");
+                    } else {
+                        if (lvar->offset != -1) {
+                            for(int i = 0; i < lvar->type->array_size; i++) {
+                                block->lhs = new_node(ND_ASSIGN, new_node(ND_DEREF, new_node(ND_ADD, new_node_num(i * size), ptr_node, ptr_node->type), NULL, ptr_node->type->ptr_to), new_node_num(0), ptr_node->type->ptr_to);
+                                block->rhs = calloc(1, sizeof(Node));
+                                block = block->rhs;
+                                block->kind = ND_BLOCK;
+                            }
+                        } else {
+                            assign_lvar_arr(lvar, 0);
+                        }
+                    }
+                } else if (token->kind == TK_STR) {
+                    char *p = token->str + 1;
+                    while (*p != '"') {
+                        block->lhs = new_node(ND_ASSIGN, new_node(ND_DEREF, new_node(ND_ADD, new_node_num(i++), ptr_node, ptr_node->type), NULL, ptr_node->type->ptr_to), new_node_num(*(p++)), ptr_node->type->ptr_to);
+                        block->rhs = calloc(1, sizeof(Node));
+                        block = block->rhs;
+                        block->kind = ND_BLOCK;
+                    }
+                    block->lhs = new_node(ND_ASSIGN, new_node(ND_DEREF, new_node(ND_ADD, new_node_num(i++), ptr_node, ptr_node->type), NULL, ptr_node->type->ptr_to), new_node_num(0), ptr_node->type->ptr_to);
+                    block->rhs = calloc(1, sizeof(Node));
+                    block = block->rhs;
+                    block->kind = ND_BLOCK;
+                    if (lvar->offset != -1) {
+                        while (i < lvar->type->array_size) {
+                            block->lhs = new_node(ND_ASSIGN, new_node(ND_DEREF, new_node(ND_ADD, new_node_num(i++), ptr_node, ptr_node->type), NULL, ptr_node->type->ptr_to), new_node_num(0), ptr_node->type->ptr_to);
+                            block->rhs = calloc(1, sizeof(Node));
+                            block = block->rhs;
+                            block->kind = ND_BLOCK;
+                        }
+                    }
+                    if (lvar->offset != -1 && i > lvar->type->array_size) {
+                        error_at(p, "文字列が長すぎます");
+                    } else {
+                        assign_lvar_arr(lvar, i);
+                    }
+                    token = token->next;
+                } else {
+                    error_at(token->str, "unexpected token");
+                }
+            } else {
+                node = new_node(ND_ASSIGN, lvar_node(lvar), assign(), lvar->type);
+            }
+        }
+        return new_node(ND_DECLARATION, node, NULL, NULL);
     }
     return assign();
 }
@@ -801,8 +932,8 @@ Node *primary() {
 
     Token *tok = consume_ident();
     if(tok) {
-        Node *node = calloc(1, sizeof(Node));
         if(consume("(")) {
+            Node *node = calloc(1, sizeof(Node));
             node->kind = ND_CALL;
             node->name = tok->str;
             node->len = tok->len;
@@ -819,21 +950,11 @@ Node *primary() {
             }
             return node;
         }
-        node->kind = ND_LVAR;
         LVar *lvar = find_lvar(tok);
         if (lvar) {
-            node->lvar = lvar;
-            if (lvar->type->ty == ARRAY) {
-                node->type = calloc(1, sizeof(Type));
-                node->type->ty = PTR;
-                node->type->ptr_to = lvar->type->ptr_to;
-                Node *res = new_node(ND_ADDR, node, NULL, node->type);
-                res->lvar = node->lvar;
-                return res;
-            } else {
-                node->type = lvar->type;
-            }
+            return lvar_node(lvar);
         } else {
+            Node *node = calloc(1, sizeof(Node));
             lvar = find_global_lvar(tok);
             if (lvar) {
                 node->kind = ND_GLOVAL_LVAR;
@@ -848,11 +969,11 @@ Node *primary() {
                 } else {
                     node->type = lvar->type;
                 }
+                return node;
             } else {
                 error_at(tok->str, "undefined");
             }
         }
-        return node;
     }
 
     return new_node_num(expect_number());

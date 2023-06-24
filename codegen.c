@@ -329,6 +329,9 @@ void gen(Node *node) {
             printf("  movzb rax, al\n");
             printf("  push rax\n");
             return;
+        case ND_DECLARATION:
+            gen(node->lhs);
+            return;
     }
 
     gen(node->lhs);

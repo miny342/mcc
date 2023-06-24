@@ -209,13 +209,23 @@ assert(t41, {return 4 || 2;}, 1)
 assert(t42, {return 0 || 0;}, 0)
 assert(t43, {int i; i = -1; return i >> 1;}, -1)
 assert(t44, {char i; i = -1; return i >> 1;}, 127)
+assert(t45, {int i = 2323; int *j = &i; return *j;}, 2323)
+
+int _t46() {
+    int i[] = {3, 1, 4};  // ここでexpr句が切れるため外に出してある
+    return i[2];
+}
+assert(t46, {return _t46();}, 4)
+assert(t47, {char a[5] = "foo"; printf("%s\n", a); return a[2];}, 111)
+assert(t48, {char b[] = "something"; printf("%s\n", b); return b[3];}, 101)
+assert(t49, {char *c = "???"; printf("%s\n", c); return c[1];}, 63)
 
 int main() {
     t0();t1();t2();t3();t4();t5();t6();t7();t8();t9();t10();
     t11();t12();t13();t14();t15();t16();t17();t18();t19();t20();
     t21();t22();t23();t24();t25();t26();t27();t28();t29();t30();
     t31();t32();t33();t34();t35();t36();t37();t38();t39();t40();
-    t41();t42();t43();t44();
+    t41();t42();t43();t44();t45();t46();t47();t48();t49();
 
     printf("OK\n");
 }
