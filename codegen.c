@@ -145,8 +145,8 @@ void gen_block(Node *node) {
         error("this is not block");
 
     Node *n = node;
-    while (n->rhs) {
-        if (n->lhs) {
+    while (n->lhs) {
+        if (n->lhs->kind != ND_DECLARATION || n->lhs->lhs) {
             gen(n->lhs);
             printf("  pop rax\n");
         }
@@ -299,6 +299,36 @@ void gen(Node *node) {
             printf("  lea rax, .LC%d[rip]\n", node->s->offset);
             printf("  push rax\n");
             return;
+        case ND_AND:
+            loopval = loopcnt;
+            loopcnt += 1;
+            gen(node->lhs);
+            printf("  pop rax\n");
+            printf("  test rax, rax\n");  // ZF = (rax != 0)
+            printf("  je .Land%d\n", loopval);  // je: ZFが1ならjump <=> raxが0ならjump
+            gen(node->rhs);
+            printf("  pop rax\n");
+            printf("  test rax, rax\n");
+            printf(".Land%d:\n", loopval);
+            printf("  setne al\n");  // !ZFを格納
+            printf("  movzb rax, al\n");
+            printf("  push rax\n");
+            return;
+        case ND_OR:
+            loopval = loopcnt;
+            loopcnt += 1;
+            gen(node->lhs);
+            printf("  pop rax\n");
+            printf("  test rax, rax\n");
+            printf("  jne .Lor%d\n", loopval); // jne: ZFが0ならjump <=> raxが0でないならjump
+            gen(node->rhs);
+            printf("  pop rax\n");
+            printf("  test rax, rax\n");
+            printf(".Lor%d:\n", loopval);
+            printf("  setne al\n");
+            printf("  movzb rax, al\n");
+            printf("  push rax\n");
+            return;
     }
 
     gen(node->lhs);
@@ -362,28 +392,6 @@ void gen(Node *node) {
             break;
         case ND_BITXOR:
             printf("  xor rax, rdi\n");
-            break;
-        case ND_AND:
-            printf("  mov rsi, rdi\n");
-            printf("  xor edi, edi\n");
-            printf("  test rsi, rsi\n");
-            printf("  setne dil\n");
-            printf("  mov rsi, rax\n");
-            printf("  xor eax, eax\n");
-            printf("  test rsi, rsi\n");
-            printf("  setne al\n");
-            printf("  and rax, rdi\n");
-            break;
-        case ND_OR:
-            printf("  mov rsi, rdi\n");
-            printf("  xor edi, edi\n");
-            printf("  test rsi, rsi\n");
-            printf("  setne dil\n");
-            printf("  mov rsi, rax\n");
-            printf("  xor eax, eax\n");
-            printf("  test rsi, rsi\n");
-            printf("  setne al\n");
-            printf("  or rax, rdi\n");
             break;
     }
 

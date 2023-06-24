@@ -118,6 +118,7 @@ typedef enum {
     ND_BITOR,  // |
     ND_AND, // &&
     ND_OR, // ||
+    ND_DECLARATION, // 変数宣言
 
 } NodeKind;
 

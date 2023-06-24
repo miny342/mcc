@@ -298,6 +298,22 @@ int calc(Node *node) {
             return calc(node->lhs) / calc(node->rhs);
         case ND_NUM:
             return node->val;
+        case ND_REMINDER:
+            return calc(node->lhs) % calc(node->rhs);
+        case ND_AND:
+            return calc(node->lhs) && calc(node->rhs);
+        case ND_OR:
+            return calc(node->lhs) || calc(node->rhs);
+        case ND_LSHIFT:
+            return calc(node->lhs) << calc(node->rhs);
+        case ND_RSHIFT:
+            return calc(node->lhs) >> calc(node->rhs);
+        case ND_BITAND:
+            return calc(node->lhs) & calc(node->rhs);
+        case ND_BITOR:
+            return calc(node->lhs) | calc(node->rhs);
+        case ND_BITXOR:
+            return calc(node->lhs) ^ calc(node->rhs);
         default:
             error_at(token->str, "calc error");
     }
@@ -394,14 +410,6 @@ Node *new_node_num(int val) {
 }
 
 void program() {
-    // code = globalstmt();
-    // Function *tmp = code;
-    // while(!at_eof()) {
-    //     tmp->next = globalstmt();
-    //     if (tmp->next) {
-    //         tmp = tmp->next;
-    //     }
-    // }
     while(!code) code = globalstmt();
     Function *tmp = code;
     while(!at_eof()) {
@@ -518,11 +526,12 @@ Node *stmt() {
     return node;
 }
 
+// (int | char) indent ([number])? (= assign)? | assign
 Node *expr() {
     if(token->kind == TK_INT || token->kind == TK_CHAR) {
         Type *type = eval_type();
         assign_lvar(type);
-        return NULL;
+        return new_node(ND_DECLARATION, NULL, NULL, NULL);
     }
     return assign();
 }
