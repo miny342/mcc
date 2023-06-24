@@ -220,6 +220,14 @@ assert(t47, {char a[5] = "foo"; printf("%s\n", a); return a[2];}, 111)
 assert(t48, {char b[] = "something"; printf("%s\n", b); return b[3];}, 101)
 assert(t49, {char *c = "???"; printf("%s\n", c); return c[1];}, 63)
 
+int a = 1;
+int *d[10] = { &a + 1, &a + 2 };
+int *b = &a;
+char k[] = "anna";
+char kl[10] = "and";
+char *p = "pic";
+
+
 int main() {
     t0();t1();t2();t3();t4();t5();t6();t7();t8();t9();t10();
     t11();t12();t13();t14();t15();t16();t17();t18();t19();t20();

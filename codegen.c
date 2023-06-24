@@ -53,7 +53,10 @@ void gen_global() {
     printf(".data\n");
     for(; globals->next; globals = globals->next) {
         printf("%.*s:\n", globals->len, globals->name);
-        printf("  .zero %d\n", globals->offset);
+        int size = globals->offset - gen_gvar(globals, globals->node);
+        if (size > 0) {
+            printf("  .zero %d\n", size);
+        }
     }
 
     printf(".section .rodata\n");
@@ -63,13 +66,64 @@ void gen_global() {
     }
 }
 
+int gen_gvar(GVar *gvar, Node *node) {
+    int i = 0;
+    int size;
+    if(!node) return 0;
+
+    switch (node->kind) {
+        case ND_BLOCK:
+            if(node->lhs) {
+                size = sizeof_parse(node->lhs->type);
+                if (size == 8) {
+                    printf("  .quad");
+                } else if (size == 4) {
+                    printf("  .long");
+                } else {
+                    printf("  .byte");
+                }
+                i += gen_gvar(gvar, node->lhs);
+                printf("\n");
+                i += gen_gvar(gvar, node->rhs);
+                i += size;
+            }
+            return i;
+        case ND_ADD:
+            i += gen_gvar(gvar, node->lhs);
+            printf(" +");
+            i += gen_gvar(gvar, node->rhs);
+            return i;
+        case ND_SUB:
+            i += gen_gvar(gvar, node->lhs);
+            printf(" -");
+            i += gen_gvar(gvar, node->rhs);
+            return i;
+        case ND_MUL:
+            i += gen_gvar(gvar, node->lhs);
+            printf(" *");
+            i += gen_gvar(gvar, node->rhs);
+            return i;
+        case ND_ADDR:
+            printf(" %.*s", node->lhs->gvar->len, node->lhs->gvar->name);
+            return i;
+        case ND_NUM:
+            printf(" %d", node->val);
+            return i;
+        case ND_STR:
+            printf(" .LC%d", node->s->offset);
+            return i;
+        default:
+            error("gen global error %d", node->kind);
+    }
+}
+
 void gen_lval(Node *node) {
     if(node->kind == ND_DEREF) {
         gen(node->lhs);
         return;
     }
     if (node->kind == ND_GLOVAL_LVAR) {
-        printf("  lea rax, %.*s[rip]\n", node->lvar->len, node->lvar->name);
+        printf("  lea rax, %.*s[rip]\n", node->gvar->len, node->gvar->name);
         return;
     }
     if (node->kind != ND_LVAR) {
@@ -255,7 +309,7 @@ void gen(Node *node) {
             return;
         case ND_GLOVAL_LVAR:
             gen_lval(node);
-            size = sizeof_parse(node->lvar->type);
+            size = sizeof_parse(node->gvar->type);
             if (size == 4) {
                 printf("  movsx rax, dword ptr [rax]\n");
             } else if (size == 1) {

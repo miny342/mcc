@@ -256,8 +256,8 @@ LVar *find_lvar(Token *tok) {
     return NULL;
 }
 
-LVar *find_global_lvar(Token *tok) {
-    for (LVar *var = globals; var; var = var->next) {
+GVar *find_global_lvar(Token *tok) {
+    for (GVar *var = globals; var; var = var->next) {
         if (var->len == tok->len && !memcmp(tok->str, var->name, var->len)) {
             return var;
         }
@@ -381,31 +381,49 @@ void assign_lvar_arr(LVar *lvar, int len) {
     locals = lvar;
 }
 
-LVar *assign_global_lvar(Type *type) {
+GVar *assign_global_lvar(Type *type) {
+    Type *tmp = NULL;
+    while(consume("*")) {
+        tmp = calloc(1, sizeof(Type));
+        tmp->ptr_to = type;
+        tmp->ty = PTR;
+        type = tmp;
+    }
     Token *tok = consume_ident();
     if(!tok)
         error_at(token->str, "non variable");
-    LVar *lvar = find_global_lvar(tok);
+    GVar *lvar = find_global_lvar(tok);
     if (lvar)
         error_at(tok->str, "duplicate");
-    lvar = calloc(1, sizeof(LVar));
-    if (consume("[")) {
-        Node *node = add();
-        expect("]");
-        Type *tmp;
-        tmp = type;
-        type = calloc(1, sizeof(Type));
-        type->ptr_to = tmp;
-        type->array_size = calc(node);
-        type->ty = ARRAY;
-    }
+    lvar = calloc(1, sizeof(GVar));
     lvar->next = globals;
     lvar->name = tok->str;
     lvar->len = tok->len;
+    if (consume("[")) {
+        Type *tmp = type;
+        type = calloc(1, sizeof(Type));
+        type->ptr_to = tmp;
+        type->ty = ARRAY;
+        if (consume("]")) {
+            lvar->type = type;
+            lvar->offset = -1;
+            return lvar;
+        }
+
+        Node *node = add();
+        expect("]");
+        type->array_size = calc(node);
+    }
     lvar->offset = sizeof_parse(type);
     lvar->type = type;
     globals = lvar;
     return lvar;
+}
+
+void assign_gvar_arr(GVar *gvar, int len) {
+    gvar->type->array_size = len;
+    gvar->offset = sizeof_parse(gvar->type);
+    globals = gvar;
 }
 
 Node *lvar_node(LVar *lvar) {
@@ -501,7 +519,77 @@ Function *globalstmt() {
         return glob;
     } else {
         token = prev;
-        assign_global_lvar(type);
+        GVar *gvar = assign_global_lvar(type);
+        if (consume("=")) {
+            if (gvar->type->ty == ARRAY) {
+                int i = 0;
+                Node *node;
+                Node *now;
+
+                if (consume("{")) {
+                    if (!consume("}")) {
+                        node = calloc(1, sizeof(Node));
+                        now = assign();
+                        node->lhs = now;
+                        node->rhs = calloc(1, sizeof(Node));
+                        node->kind = ND_BLOCK;
+                        node->rhs->kind = ND_BLOCK;
+                        now = node->rhs;
+                        i++;
+                        while (consume(",")) {
+                            now->lhs = assign();
+                            now->rhs = calloc(1, sizeof(Node));
+                            now->rhs->kind = ND_BLOCK;
+                            now = now->rhs;
+                            i++;
+                        }
+                        expect("}");
+                    }
+                    if (gvar->offset != -1) {
+                        if (i > gvar->type->array_size) {
+                            error_at(token->str, "引数が多すぎます");
+                        }
+                    } else {
+                        assign_gvar_arr(gvar, i);
+                    }
+                    gvar->node = node;
+                } else if (token->kind == TK_STR) {
+                    int i = 0;
+                    char *p = token->str + 1;
+                    node = calloc(1, sizeof(Node));
+                    node->kind = ND_BLOCK;
+                    Node *now = node;
+                    for(; i < token->len - 2; i++) {
+                        now->lhs = calloc(1, sizeof(Node));
+                        now->lhs->kind = ND_NUM;
+                        now->lhs->type = &char_type;
+                        now->lhs->val = p[i];
+                        now->rhs = calloc(1, sizeof(Node));
+                        now->rhs->kind = ND_BLOCK;
+                        now = now->rhs;
+                    }
+                    now->lhs = calloc(1, sizeof(Node));
+                    now->lhs->kind = ND_NUM;
+                    now->lhs->type = &char_type;
+                    i++;
+                    if (gvar->offset != -1) {
+                        if (i > gvar->type->array_size) {
+                            error_at(token->str, "文字列が長すぎます");
+                        }
+                    } else {
+                        assign_gvar_arr(gvar, i);
+                    }
+                    gvar->node = node;
+                    token = token->next;
+                } else {
+                    error_at(token->str, "unimplemented");
+                }
+            } else {
+                gvar->node = calloc(1, sizeof(Node));
+                gvar->node->lhs = assign();
+                gvar->node->kind = ND_BLOCK;
+            }
+        }
         expect(";");
         return NULL;
     }
@@ -959,19 +1047,19 @@ Node *primary() {
             return lvar_node(lvar);
         } else {
             Node *node = calloc(1, sizeof(Node));
-            lvar = find_global_lvar(tok);
-            if (lvar) {
+            GVar *gvar = find_global_lvar(tok);
+            if (gvar) {
                 node->kind = ND_GLOVAL_LVAR;
-                node->lvar = lvar;
-                if (lvar->type->ty == ARRAY) {
+                node->gvar = gvar;
+                if (gvar->type->ty == ARRAY) {
                     node->type = calloc(1, sizeof(Type));
                     node->type->ty = PTR;
-                    node->type->ptr_to = lvar->type->ptr_to;
+                    node->type->ptr_to = gvar->type->ptr_to;
                     Node *res = new_node(ND_ADDR, node, NULL, node->type);
-                    res->lvar = node->lvar;
+                    res->gvar = node->gvar;
                     return res;
                 } else {
-                    node->type = lvar->type;
+                    node->type = gvar->type;
                 }
                 return node;
             } else {

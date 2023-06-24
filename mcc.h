@@ -55,6 +55,8 @@ Token *tokenize(char *p);
 
 // parse.c
 
+typedef struct Node Node;
+
 typedef struct Type Type;
 
 struct Type {
@@ -75,7 +77,20 @@ struct LVar {
 };
 
 extern LVar *locals;
-extern LVar *globals;
+
+typedef struct GVar GVar;
+
+// global variable
+struct GVar {
+    GVar *next;
+    char *name;
+    int len;
+    int offset;
+    Type *type;
+    Node *node; // GVarの初期値
+};
+
+extern GVar *globals;
 
 typedef struct String String;
 
@@ -122,8 +137,6 @@ typedef enum {
 
 } NodeKind;
 
-typedef struct Node Node;
-
 // 抽象構文木のノードの型
 struct Node {
     NodeKind kind; // ノードの型
@@ -135,6 +148,7 @@ struct Node {
     char *name;    // kind == ND_CALL
     int len;       // kind == ND_CALL
     String *s;     // kind == ND_STR
+    GVar *gvar;    // kind == ND_GLOVAL_LVAR
 };
 
 typedef struct Function Function;
