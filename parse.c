@@ -914,11 +914,15 @@ Node *primary() {
     }
 
     if (token->kind == TK_STR) {
-        String *s = calloc(1, sizeof(String));
-        s->next = strs;
-        s->offset = strs->offset + 1;
-        s->tok = token;
-        strs = s;
+        String *s = strmapget(strmap, token->str, token->len);
+        if (!s) {
+            s = calloc(1, sizeof(String));
+            s->next = strs;
+            s->offset = strs->offset + 1;
+            s->tok = token;
+            strmapset(strmap, token->str, token->len, s);
+            strs = s;
+        }
         token = token->next;
 
         Node *node = calloc(1, sizeof(Node));

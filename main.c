@@ -9,6 +9,8 @@ LVar *globals;
 String *strs;
 int loopcnt = 0;
 
+StrMap *strmap;
+
 char *read_file(char *path) {
     FILE *fp;
     fp = fopen(path, "r");
@@ -44,6 +46,8 @@ int main(int argc, char **argv){
     locals = calloc(1, sizeof(LVar));
     globals = calloc(1, sizeof(LVar));
     strs = calloc(1, sizeof(String));
+
+    strmap = calloc(1, sizeof(StrMap));
 
     // user_input = argv[1];
     filename = argv[1];

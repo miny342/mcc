@@ -178,3 +178,17 @@ void gen(Node *node);
 void gen_global();
 
 extern int loopcnt;
+
+// tool
+
+typedef struct StrMap StrMap;
+
+struct StrMap {
+    StrMap *p[256];
+    void *value;
+};
+
+void *strmapget(StrMap *map, char *str, int len);
+void strmapset(StrMap *map, char *str, int len, void *value);
+
+extern StrMap *strmap;
