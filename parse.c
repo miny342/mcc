@@ -277,40 +277,87 @@ Type *eval_type() {
     return type;
 }
 
-int calc(Node *node) {
+// 事前計算が単純な範囲で計算を行う
+Node *calc_node(Node *node) {
     if (!node)
-        error("calc NULL error");
-    switch (node->kind) {
-        case ND_ADD:
-            return calc(node->lhs) + calc(node->rhs);
-        case ND_SUB:
-            return calc(node->lhs) - calc(node->rhs);
-        case ND_MUL:
-            return calc(node->lhs) * calc(node->rhs);
-        case ND_DIV:
-            return calc(node->lhs) / calc(node->rhs);
-        case ND_NUM:
-            return node->val;
-        case ND_REMINDER:
-            return calc(node->lhs) % calc(node->rhs);
-        case ND_AND:
-            return calc(node->lhs) && calc(node->rhs);
-        case ND_OR:
-            return calc(node->lhs) || calc(node->rhs);
-        case ND_LSHIFT:
-            return calc(node->lhs) << calc(node->rhs);
-        case ND_RSHIFT:
-            return calc(node->lhs) >> calc(node->rhs);
-        case ND_BITAND:
-            return calc(node->lhs) & calc(node->rhs);
-        case ND_BITOR:
-            return calc(node->lhs) | calc(node->rhs);
-        case ND_BITXOR:
-            return calc(node->lhs) ^ calc(node->rhs);
-        default:
-            error_at(token->str, "calc error");
+        return NULL;
+
+    node->lhs = calc_node(node->lhs);
+    node->rhs = calc_node(node->rhs);
+
+    if (!node->lhs || !node->rhs) {
+        return node;
     }
 
+    if (node->lhs->kind != ND_NUM || node->rhs->kind != ND_NUM) {
+        return node;
+    }
+
+    int l = node->lhs->val;
+    int r = node->rhs->val;
+    int res;
+
+    switch (node->kind) {
+        case ND_ADD:
+            res = l + r;
+            break;
+        case ND_SUB:
+            res = l - r;
+            break;
+        case ND_MUL:
+            res = l * r;
+            break;
+        case ND_DIV:
+            res = l / r;
+            break;
+        case ND_REMINDER:
+            res = l % r;
+            break;
+        case ND_AND:
+            res = l && r;
+            break;
+        case ND_OR:
+            res = l || r;
+            break;
+        case ND_LSHIFT:
+            res = l << r;
+            break;
+        case ND_RSHIFT:
+            res = l >> r;
+            break;
+        case ND_BITAND:
+            res = l & r;
+            break;
+        case ND_BITOR:
+            res = l | r;
+            break;
+        case ND_BITXOR:
+            res = l ^ r;
+            break;
+        case ND_EQ:
+            res = l == r;
+            break;
+        case ND_NE:
+            res = l != r;
+            break;
+        case ND_LT:
+            res = l < r;
+            break;
+        case ND_LE:
+            res = l <= r;
+            break;
+        default:
+            return node;
+    }
+    return new_node_num(res);
+}
+
+int calc(Node *node) {
+    Node *n = calc_node(node);
+    if (n->kind != ND_NUM) {
+        error_at(token->str, "calc error");
+    }
+    return n->val;
 }
 
 int sizeof_parse(Type *type) {
@@ -357,7 +404,7 @@ LVar *assign_lvar(Type *type) {
             return lvar;
         }
 
-        Node *node = add();
+        Node *node = logic_or();
         expect("]");
         type->array_size = calc(node);
         diffoffset = sizeof_parse(type);
@@ -410,7 +457,7 @@ GVar *assign_global_lvar(Type *type) {
             return lvar;
         }
 
-        Node *node = add();
+        Node *node = logic_or();
         expect("]");
         type->array_size = calc(node);
     }
@@ -546,7 +593,7 @@ Function *globalstmt() {
         tok = token;
         expect("{");
         token = tok;
-        glob->node = stmt();
+        glob->node = calc_node(stmt());
         glob->locals = locals;
         return glob;
     } else {
