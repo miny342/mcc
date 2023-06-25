@@ -205,6 +205,12 @@ Token *tokenize(char *p) {
             continue;
         }
 
+        if (strncmp(p, "void", 4) == 0 && !is_alnum(p[4])) {
+            cur = new_token(TK_VOID, cur, p, 4);
+            p += 4;
+            continue;
+        }
+
         if (strncmp(p, "int", 3) == 0 && !is_alnum(p[3])) {
             cur = new_token(TK_INT, cur, p, 3);
             p += 3;
@@ -315,6 +321,8 @@ Type *eval_type() {
         type->ty = CHAR;
     } else if (consume("...")) {
         type->ty = VA_ARGS;
+    } else if (consumeTK(TK_VOID)) {
+        type->ty = VOID;
     } else {
         error_at(token->str, "no int or char");
     }
@@ -413,7 +421,7 @@ int sizeof_parse(Type *type) {
         return sizeof(int*);
     if (type->ty == ARRAY)
         return type->array_size * sizeof_parse(type->ptr_to);
-    if (type->ty == CHAR)
+    if (type->ty == CHAR || type->ty == VOID)
         return sizeof(char);
 }
 
@@ -589,15 +597,15 @@ Node *block_node(Node *child, Node *prev) {
 }
 
 void program() {
-    code = globalstmt();
-    GVar *tmp = code;
+    GVar **tmp = &code;
+    globalstmt(tmp);
     while(!at_eof()) {
-        tmp->next = globalstmt();
-        tmp = tmp->next;
+        tmp = &(*tmp)->next;
+        globalstmt(tmp);
     }
 }
 
-GVar *globalstmt() {
+void globalstmt(GVar **ptr) {
     Type *type = eval_type();
     Type *ttmp;
     while(consume("*")) {
@@ -624,6 +632,9 @@ GVar *globalstmt() {
             while(1) {
                 type = eval_type();
                 lvar = assign_lvar(type);
+                if (type->ty == VA_ARGS) {
+                    break;
+                }
                 i++;
                 if(!consume(",")) break;
             }
@@ -645,14 +656,15 @@ GVar *globalstmt() {
             expect(")");
         }
         tok = token;
+        *ptr = func;
         if (consume(";")) {
             func->locals = locals;
-            return func;
+            return;
         } else if (consume("{")) {
             token = tok;
             func->node = calc_node(stmt());
             func->locals = locals;
-            return func;
+            return;
         } else {
             error_at(token->str, "関数ではありません");
         }
@@ -733,7 +745,7 @@ GVar *globalstmt() {
             error_at(token->str, "配列の初期化ができません");
         }
         expect(";");
-        return gvar;
+        *ptr = gvar;
     }
 }
 
@@ -1039,7 +1051,7 @@ Node *mul() {
     }
 }
 
-// ("+" | "-")? primary ("[" expr "]")?  |  ("*" | "&") unary  |  sizeof unary
+// ("+" | "-")? primary (("[" assign "]")* | "(" assign ")" )  |  ("*" | "&") unary  |  sizeof unary
 Node *unary() {
     Node *node;
     Type *tmp;
@@ -1080,15 +1092,43 @@ Node *unary() {
         }
     }
     node = primary();
-    if (consume("[")) {
-        Node *n = expr();
-        node = deref_node(add_node(node, n));
-        expect("]");
+    Node *right;
+    for(;;) {
+        if (consume("[")) {
+            Node *n = assign();
+            node = deref_node(add_node(node, n));
+            expect("]");
+        } else if (consume("(")) {
+            if (node->type->ty != FUNC && !(node->type->ty == PTR && node->type->ptr_to->ty == FUNC)) {
+                error_at(token->str, "関数ではありません");
+            }
+            Node *n = calloc(1, sizeof(Node));
+            n->kind = ND_CALL;
+            if (node->type->ty == PTR) {
+                n->type = node->type->ptr_to->ret;
+            } else {
+                n->type = node->type->ret;
+            }
+            n->lhs = node;
+            Node *now_node = calloc(1, sizeof(Node));
+            n->rhs = now_node;
+
+            if (!consume(")")) {
+                for(;;) {
+                    now_node->lhs = assign();
+                    now_node->rhs = calloc(1, sizeof(Node));
+                    now_node = now_node->rhs;
+                    if(!consume(",")) break;
+                }
+                expect(")");
+            }
+            node = n;
+        } else
+            return node;
     }
-    return node;
 }
 
-// num | "(" assign ")" | ident ("(" ")")? | String
+// num | "(" assign ")" | ident | String
 Node *primary() {
     if (consume("(")){
         Node *node = assign();
@@ -1119,31 +1159,13 @@ Node *primary() {
 
     Token *tok = consume_ident();
     if(tok) {
-        if(consume("(")) {
-            Node *node = calloc(1, sizeof(Node));
-            node->kind = ND_CALL;
-            node->name = tok->str;
-            node->len = tok->len;
-            node->type = &int_type; // TODO: fix
-            Node *now_node = node;
-            if(!consume(")")) {
-                for(;;) {
-                    now_node->lhs = expr();
-                    now_node->rhs = calloc(1, sizeof(Node));
-                    now_node = now_node->rhs;
-                    if(!consume(",")) break;
-                }
-                expect(")");
-            }
-            return node;
-        }
         LVar *lvar = find_lvar(tok);
         if (lvar) {
             return lvar_node(lvar);
         } else {
-            Node *node = calloc(1, sizeof(Node));
             GVar *gvar = find_gvar(tok);
             if (gvar) {
+                Node *node = calloc(1, sizeof(Node));
                 node->kind = ND_GLOVAL_LVAR;
                 node->gvar = gvar;
                 if (gvar->type->ty == ARRAY) {
@@ -1157,10 +1179,9 @@ Node *primary() {
                     node->type = gvar->type;
                 }
                 return node;
-            } else {
-                error_at(tok->str, "undefined");
             }
         }
+        error_at(tok->str, "undefined");
     }
 
     return new_node_num(expect_number());

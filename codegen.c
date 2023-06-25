@@ -193,12 +193,16 @@ void gen_call(Node *node) {
 
     int stack;
 
-    gen_callstack(node, 0);
-    stack = gen_callregister(node, 0);
-    printf("  xor rax, rax\n");
-    printf("  call %.*s\n", node->len, node->name);
-    if (stack > 0) {
-        printf("  add rsp, %d\n", stack * 8);
+    if (node->lhs->kind == ND_GLOVAL_LVAR) {
+        gen_callstack(node->rhs, 0);
+        stack = gen_callregister(node->rhs, 0);
+        printf("  xor rax, rax\n");
+        printf("  call %.*s\n", node->lhs->gvar->len, node->lhs->gvar->name);
+        if (stack > 0) {
+            printf("  add rsp, %d\n", stack * 8);
+        }
+    } else {
+        error("unimplemented: call ptr");
     }
 }
 

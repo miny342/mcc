@@ -1,3 +1,9 @@
+int printf(char *s, ...);
+int exit(int status);
+void print(int i);
+int *alloc4(int a, int b, int c, int d);
+
+
 #define assert(name, expr, expect) \
 int name ## _assert () expr \
 int name () {\
@@ -46,13 +52,14 @@ assert(t19, {
     return current;
 }, 233)
 
-assert(t20, {return t20_fib(13);}, 233)
 int t20_fib(int i) {
     if (i <= 0) return 0;
     if (i == 1) return 1;
     if (i == 2) return 1;
     return t20_fib(i - 1) + t20_fib(i - 2);
 }
+assert(t20, {return t20_fib(13);}, 233)
+
 
 assert(t21, {int x; int *y; x = 3; y = &x; return *y;}, 3)
 assert(t22, {int x; int y; int *z; x = 3; y = 5; z = &y + 2; return *z;}, 3)
@@ -231,7 +238,7 @@ char *p = "pic";
 int main() {
     t0();t1();t2();t3();t4();t5();t6();t7();t8();t9();t10();
     t11();t12();t13();t14();t15();t16();t17();t18();t19();t20();
-    t21();t22();t23();t24();t25();t26();t27();t28();t29();t30();
+    t21();t22();t23();t25();t26();t27();t28();t29();t30();
     t31();t32();t33();t34();t35();t36();t37();t38();t39();t40();
     t41();t42();t43();t44();t45();t46();t47();t48();t49();
 

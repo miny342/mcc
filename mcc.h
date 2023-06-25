@@ -23,6 +23,7 @@ typedef enum {
     TK_SIZEOF,   // sizeof
     TK_CHAR,     // char
     TK_STR,      // string
+    TK_VOID,     // void
 } TokenKind;
 
 typedef struct Token Token;
@@ -70,6 +71,7 @@ struct Type {
         CHAR,
         FUNC,
         VA_ARGS, // ...
+        VOID,
     } ty;
     Type *ptr_to;
     size_t array_size;
@@ -156,15 +158,13 @@ struct Node {
     Type *type;    // 計算時のtype
     int val;       // kind == ND_NUM
     LVar *lvar;    // kind == ND_LVAR
-    char *name;    // kind == ND_CALL
-    int len;       // kind == ND_CALL
     String *s;     // kind == ND_STR
     GVar *gvar;    // kind == ND_GLOVAL_LVAR
 };
 
 
 int sizeof_parse(Type *type);
-GVar *globalstmt();
+void globalstmt(GVar **ptr);
 Node *new_node(NodeKind kind, Node *lhs, Node *rhs, Type *type);
 Node *new_node_num(int val);
 void program();
