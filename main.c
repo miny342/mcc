@@ -3,9 +3,8 @@
 Token *token;
 char *user_input;
 char *filename;
-Function *code;
+GVar *code;
 LVar *locals;
-GVar *globals;
 String *strs;
 int loopcnt = 0;
 
@@ -44,7 +43,6 @@ int main(int argc, char **argv){
     }
 
     locals = calloc(1, sizeof(LVar));
-    globals = calloc(1, sizeof(GVar));
     strs = calloc(1, sizeof(String));
 
     strmap = calloc(1, sizeof(StrMap));

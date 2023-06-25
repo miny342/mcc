@@ -17,7 +17,7 @@ void error_at(char *loc, char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
 
-    // locが含まれる行の回質店と終了地点
+    // locが含まれる行の開始地点と終了地点
     char *line = loc;
     while (user_input < line && line[-1] != '\n') {
         line--;
@@ -47,6 +47,42 @@ void error_at(char *loc, char *fmt, ...) {
     vfprintf(stderr, fmt, ap);
     fprintf(stderr, "\n");
     exit(1);
+}
+
+// 警告箇所を報告する
+void warning_at(char *loc, char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+
+    // locが含まれる行の開始地点と終了地点
+    char *line = loc;
+    while (user_input < line && line[-1] != '\n') {
+        line--;
+    }
+
+    char *end = loc;
+    while (*end != '\n') {
+        end++;
+    }
+
+    // 見つかった行が全体の何番目か
+    int line_num = 1;
+    for (char *p = user_input; p < line; p++) {
+        if (*p == '\n') {
+            line_num++;
+        }
+    }
+
+    // 見つかった行を、ファイル名と行番号と一緒に表示
+    int ident = fprintf(stderr, "%s:%d ", filename, line_num);
+    fprintf(stderr, "%.*s\n", (int)(end - line), line);
+
+    // エラー個所を^で示して、エラーメッセージを表示
+    int pos = loc - line + ident;
+    fprintf(stderr, "%*s", pos, "");
+    fprintf(stderr, "^ ");
+    vfprintf(stderr, fmt, ap);
+    fprintf(stderr, "\n");
 }
 
 // エラーを報告するための関数
@@ -181,6 +217,12 @@ Token *tokenize(char *p) {
             continue;
         }
 
+        if (strncmp(p, "...", 3) == 0 && !is_alnum(p[3])) {
+            cur = new_token(TK_RESERVED, cur, p, 3);
+            p += 3;
+            continue;
+        }
+
         if (strncmp(p, "if", 2) == 0 && !is_alnum(p[2])) {
             cur = new_token(TK_IF, cur, p, 2);
             p += 2;
@@ -256,8 +298,8 @@ LVar *find_lvar(Token *tok) {
     return NULL;
 }
 
-GVar *find_global_lvar(Token *tok) {
-    for (GVar *var = globals; var; var = var->next) {
+GVar *find_gvar(Token *tok) {
+    for (GVar *var = code; var; var = var->next) {
         if (var->len == tok->len && !memcmp(tok->str, var->name, var->len)) {
             return var;
         }
@@ -271,6 +313,8 @@ Type *eval_type() {
         type->ty = INT;
     } else if (consumeTK(TK_CHAR)) {
         type->ty = CHAR;
+    } else if (consume("...")) {
+        type->ty = VA_ARGS;
     } else {
         error_at(token->str, "no int or char");
     }
@@ -383,8 +427,15 @@ LVar *assign_lvar(Type *type) {
         type = tmp;
     }
     Token *tok = consume_ident();
-    if(!tok)
+    if(!tok) {
+        if (type->ty == VA_ARGS) {
+            LVar *lvar = calloc(1, sizeof(LVar));
+            lvar->type = type;
+            lvar->next = locals;
+            return lvar;
+        }
         error_at(token->str, "non variable");
+    }
     LVar *lvar = find_lvar(tok);
     if (lvar)
         error_at(tok->str, "duplicate");
@@ -428,7 +479,7 @@ void assign_lvar_arr(LVar *lvar, int len) {
     locals = lvar;
 }
 
-GVar *assign_global_lvar(Type *type) {
+GVar *init_gvar(Type *type) {
     Type *tmp = NULL;
     while(consume("*")) {
         tmp = calloc(1, sizeof(Type));
@@ -437,13 +488,13 @@ GVar *assign_global_lvar(Type *type) {
         type = tmp;
     }
     Token *tok = consume_ident();
-    if(!tok)
+    if(!tok) {
         error_at(token->str, "non variable");
-    GVar *lvar = find_global_lvar(tok);
+    }
+    GVar *lvar = find_gvar(tok);
     if (lvar)
         error_at(tok->str, "duplicate");
     lvar = calloc(1, sizeof(GVar));
-    lvar->next = globals;
     lvar->name = tok->str;
     lvar->len = tok->len;
     if (consume("[")) {
@@ -463,14 +514,12 @@ GVar *assign_global_lvar(Type *type) {
     }
     lvar->offset = sizeof_parse(type);
     lvar->type = type;
-    globals = lvar;
     return lvar;
 }
 
-void assign_gvar_arr(GVar *gvar, int len) {
+void init_gvar_arr(GVar *gvar, int len) {
     gvar->type->array_size = len;
     gvar->offset = sizeof_parse(gvar->type);
-    globals = gvar;
 }
 
 Node *lvar_node(LVar *lvar) {
@@ -540,17 +589,15 @@ Node *block_node(Node *child, Node *prev) {
 }
 
 void program() {
-    while(!code) code = globalstmt();
-    Function *tmp = code;
+    code = globalstmt();
+    GVar *tmp = code;
     while(!at_eof()) {
         tmp->next = globalstmt();
-        if (tmp->next) {
-            tmp = tmp->next;
-        }
+        tmp = tmp->next;
     }
 }
 
-Function *globalstmt() {
+GVar *globalstmt() {
     Type *type = eval_type();
     Type *ttmp;
     while(consume("*")) {
@@ -564,23 +611,30 @@ Function *globalstmt() {
     LVar *lvar, *tmp;
     if(!tok) error("invalid token");
     if (consume("(")) {
-        Function *glob = calloc(1, sizeof(Function));
-        glob->name = tok->str;
-        glob->len = tok->len;
-        glob->type = type;
+        GVar *func = calloc(1, sizeof(GVar));
+        func->name = tok->str;
+        func->len = tok->len;
+        Type *ftype = calloc(1, sizeof(Type));
+        func->type = ftype;
+        ftype->ret = type;
+        ftype->ty = FUNC;
         locals = calloc(1, sizeof(LVar));
-        if(!consume(")")) {
-            for(;;) {
+        int i = 0;
+        if (!consume(")")) {
+            while(1) {
                 type = eval_type();
-                assign_lvar(type);
-                glob->arglen += 1;
+                lvar = assign_lvar(type);
+                i++;
                 if(!consume(",")) break;
             }
+            ftype->arglen = i;
+            ftype->args = lvar;
             tmp = locals;
             for(lvar = locals; lvar; lvar = lvar->next) {
-                if(lvar->offset > 6 * 8)
+                if (lvar->offset > 6 * 8) {
                     lvar->offset = 5 * 8 - lvar->offset;
-                if(lvar->offset == -16) {
+                }
+                if (lvar->offset == -16){
                     locals = lvar->next;
                     lvar->next = NULL;
                     for(lvar = locals; lvar->next; lvar = lvar->next);
@@ -591,14 +645,20 @@ Function *globalstmt() {
             expect(")");
         }
         tok = token;
-        expect("{");
-        token = tok;
-        glob->node = calc_node(stmt());
-        glob->locals = locals;
-        return glob;
+        if (consume(";")) {
+            func->locals = locals;
+            return func;
+        } else if (consume("{")) {
+            token = tok;
+            func->node = calc_node(stmt());
+            func->locals = locals;
+            return func;
+        } else {
+            error_at(token->str, "関数ではありません");
+        }
     } else {
         token = prev;
-        GVar *gvar = assign_global_lvar(type);
+        GVar *gvar = init_gvar(type);
         if (consume("=")) {
             if (gvar->type->ty == ARRAY) {
                 int i = 0;
@@ -629,7 +689,7 @@ Function *globalstmt() {
                             error_at(token->str, "引数が多すぎます");
                         }
                     } else {
-                        assign_gvar_arr(gvar, i);
+                        init_gvar_arr(gvar, i);
                     }
                     gvar->node = node;
                 } else if (token->kind == TK_STR) {
@@ -656,7 +716,7 @@ Function *globalstmt() {
                             error_at(token->str, "文字列が長すぎます");
                         }
                     } else {
-                        assign_gvar_arr(gvar, i);
+                        init_gvar_arr(gvar, i);
                     }
                     gvar->node = node;
                     token = token->next;
@@ -669,8 +729,11 @@ Function *globalstmt() {
                 gvar->node->kind = ND_BLOCK;
             }
         }
+        if (gvar->offset == -1) {
+            error_at(token->str, "配列の初期化ができません");
+        }
         expect(";");
-        return NULL;
+        return gvar;
     }
 }
 
@@ -716,14 +779,14 @@ Node *stmt() {
         }
         node->rhs->rhs->rhs = stmt();
     } else if (consume("{")) {
-        node = NULL;
+        node = block_node(NULL, NULL);
         while(!consume("}")) {
             node = block_node(stmt(), node);
         }
     }
     else {
-       node = expr();
-       expect(";");
+        node = expr();
+        expect(";");
     }
     return node;
 }
@@ -1079,7 +1142,7 @@ Node *primary() {
             return lvar_node(lvar);
         } else {
             Node *node = calloc(1, sizeof(Node));
-            GVar *gvar = find_global_lvar(tok);
+            GVar *gvar = find_gvar(tok);
             if (gvar) {
                 node->kind = ND_GLOVAL_LVAR;
                 node->gvar = gvar;

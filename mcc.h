@@ -45,6 +45,7 @@ extern char *user_input;
 extern char *filename;
 
 void error_at(char *loc, char *fmt, ...);
+void warning_at(char *loc, char *fmt, ...);
 void error(char *fmt, ...);
 bool consume(char *op);
 void expect(char *op);
@@ -59,13 +60,23 @@ typedef struct Node Node;
 
 typedef struct Type Type;
 
+typedef struct LVar LVar;
+
 struct Type {
-    enum {INT, PTR, ARRAY, CHAR} ty;
+    enum {
+        INT,
+        PTR,
+        ARRAY,
+        CHAR,
+        FUNC,
+        VA_ARGS, // ...
+    } ty;
     Type *ptr_to;
     size_t array_size;
+    Type *ret; // ty == FUNCの時の返り値
+    LVar *args; // ty == FUNCの時の引数の列
+    int arglen; // ty == FUNCの時の引数の数
 };
-
-typedef struct LVar LVar;
 
 // local variable
 struct LVar {
@@ -85,13 +96,13 @@ struct GVar {
     GVar *next;
     char *name;
     int len;
-    int offset;
+    int offset; // type != func
     Type *type;
-    Node *node; // GVarの初期値
+    Node *node; // GVarの初期値またはtype==funcの時の実行ノード
+    LVar *locals; // type == func
 };
 
-extern GVar *globals;
-
+extern GVar *code;
 typedef struct String String;
 
 struct String {
@@ -151,22 +162,9 @@ struct Node {
     GVar *gvar;    // kind == ND_GLOVAL_LVAR
 };
 
-typedef struct Function Function;
-
-struct Function {
-    Function *next;  // next Function or NULL
-    Node *node;    // stmt
-    LVar *locals;  // local variable
-    int arglen;    // function args (not float) quantity
-    char *name;    // function
-    int len;       // function
-    Type *type;    // return type
-};
-
-extern Function *code;
 
 int sizeof_parse(Type *type);
-Function *globalstmt();
+GVar *globalstmt();
 Node *new_node(NodeKind kind, Node *lhs, Node *rhs, Type *type);
 Node *new_node_num(int val);
 void program();
@@ -190,6 +188,7 @@ Node *primary();
 // codegen.c
 void gen(Node *node);
 void gen_global();
+int gen_gvar(Node *node);
 
 extern int loopcnt;
 

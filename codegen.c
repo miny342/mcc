@@ -6,54 +6,64 @@ void gen_global() {
     printf(".intel_syntax noprefix\n");
     printf(".globl main\n");
 
+    GVar *data;
+    GVar **tmp = &data;
+
     for(; code; code = code->next) {
-        printf("%.*s:\n", code->len, code->name);
+        if (code->type->ty == FUNC && code->node) {
+            Type *type = code->type;
+            printf("%.*s:\n", code->len, code->name);
 
-        // prologue
-        printf("  push rbp\n");
-        printf("  mov rbp, rsp\n");
+            // prologue
+            printf("  push rbp\n");
+            printf("  mov rbp, rsp\n");
 
-        for(int i = 0; i < code->arglen; i++) {
-            switch (i) {
-                case 0:
-                    printf("  push rdi\n");
-                    break;
-                case 1:
-                    printf("  push rsi\n");
-                    break;
-                case 2:
-                    printf("  push rdx\n");
-                    break;
-                case 3:
-                    printf("  push rcx\n");
-                    break;
-                case 4:
-                    printf("  push r8\n");
-                    break;
-                case 5:
-                    printf("  push r9\n");
-                    break;
+            for(int i = 0; i < type->arglen; i++) {
+                switch (i) {
+                    case 0:
+                        printf("  push rdi\n");
+                        break;
+                    case 1:
+                        printf("  push rsi\n");
+                        break;
+                    case 2:
+                        printf("  push rdx\n");
+                        break;
+                    case 3:
+                        printf("  push rcx\n");
+                        break;
+                    case 4:
+                        printf("  push r8\n");
+                        break;
+                    case 5:
+                        printf("  push r9\n");
+                        break;
+                }
             }
+
+            int sub = (code->locals->offset - min(type->arglen, 6) * 8) + (16 - code->locals->offset % 16) % 16;
+
+            if (sub > 0) {
+                printf("  sub rsp, %d\n", sub);
+            }
+
+            gen(code->node);
+
+            // epilogue
+            printf("  xor eax, eax\n");
+            printf("  leave\n");
+            printf("  ret\n");
+        } else if (code->type->ty != FUNC) {
+            *tmp = code;
+            tmp = &code->next;
         }
-
-        int sub = (code->locals->offset - min(code->arglen, 6) * 8) + (16 - code->locals->offset % 16) % 16;
-
-        if (sub > 0) {
-            printf("  sub rsp, %d\n", sub);
-        }
-
-        gen(code->node);
-
-        // epilogue
-        printf("  xor eax, eax\n");
-        printf("  leave\n");
-        printf("  ret\n");
     }
+    *tmp = NULL;
 
     printf(".data\n");
-    for(; globals->next; globals = globals->next) {
-        printf("%.*s:\n", globals->len, globals->name);
-        int size = globals->offset - gen_gvar(globals, globals->node);
+    for(; data; data = data->next) {
+        printf("%.*s:\n", data->len, data->name);
+        int size = data->offset - gen_gvar(data->node);
         if (size > 0) {
             printf("  .zero %d\n", size);
         }
@@ -66,7 +76,7 @@ void gen_global() {
     }
 }
 
-int gen_gvar(GVar *gvar, Node *node) {
+int gen_gvar(Node *node) {
     int i = 0;
     int size;
     if(!node) return 0;
@@ -82,26 +92,26 @@ int gen_gvar(GVar *gvar, Node *node) {
                 } else {
                     printf("  .byte");
                 }
-                i += gen_gvar(gvar, node->lhs);
+                i += gen_gvar(node->lhs);
                 printf("\n");
-                i += gen_gvar(gvar, node->rhs);
+                i += gen_gvar(node->rhs);
                 i += size;
             }
             return i;
         case ND_ADD:
-            i += gen_gvar(gvar, node->lhs);
+            i += gen_gvar(node->lhs);
             printf(" +");
-            i += gen_gvar(gvar, node->rhs);
+            i += gen_gvar(node->rhs);
             return i;
         case ND_SUB:
-            i += gen_gvar(gvar, node->lhs);
+            i += gen_gvar(node->lhs);
             printf(" -");
-            i += gen_gvar(gvar, node->rhs);
+            i += gen_gvar(node->rhs);
             return i;
         case ND_MUL:
-            i += gen_gvar(gvar, node->lhs);
+            i += gen_gvar(node->lhs);
             printf(" *");
-            i += gen_gvar(gvar, node->rhs);
+            i += gen_gvar(node->rhs);
             return i;
         case ND_ADDR:
             printf(" %.*s", node->lhs->gvar->len, node->lhs->gvar->name);
