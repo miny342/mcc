@@ -460,6 +460,38 @@ Node *new_node_num(int val) {
     return node;
 }
 
+Node *add_node(Node *lhs, Node *rhs) {
+    if (lhs->type->ty == PTR && rhs->type->ty == PTR) {
+        error_at(token->str, "ptr + ptrはできません");
+    }
+    if (lhs->type->ty == PTR) {
+        return new_node(ND_ADD, lhs, new_node(ND_MUL, rhs, new_node_num(sizeof_parse(lhs->type->ptr_to)), NULL), lhs->type);
+    }
+    if (rhs->type->ty == PTR) {
+        return new_node(ND_ADD, rhs, new_node(ND_MUL, lhs, new_node_num(sizeof_parse(rhs->type->ptr_to)), NULL), rhs->type);
+    }
+    return new_node(ND_ADD, lhs, rhs, lhs->type);
+}
+
+Node *deref_node(Node *n) {
+    if (n->type->ty != PTR) {
+        error_at(token->str, "derefできません");
+    }
+    return new_node(ND_DEREF, n, NULL, n->type->ptr_to);
+}
+
+Node *assign_node(Node *lhs, Node *rhs) {
+    return new_node(ND_ASSIGN, lhs, rhs, lhs->type);
+}
+
+Node *block_node(Node *child, Node *prev) {
+    Node *node = calloc(1, sizeof(Node));
+    node->kind = ND_BLOCK;
+    node->lhs = child;
+    node->rhs = prev;
+    return node;
+}
+
 void program() {
     while(!code) code = globalstmt();
     Function *tmp = code;
@@ -637,14 +669,9 @@ Node *stmt() {
         }
         node->rhs->rhs->rhs = stmt();
     } else if (consume("{")) {
-        node = calloc(1, sizeof(Node));
-        node->kind = ND_BLOCK;
-        Node *now_node = node;
+        node = NULL;
         while(!consume("}")) {
-            now_node->lhs = stmt();
-            now_node->rhs = calloc(1, sizeof(Node));
-            now_node = now_node->rhs;
-            now_node->kind = ND_BLOCK;
+            node = block_node(stmt(), node);
         }
     }
     else {
@@ -673,30 +700,17 @@ Node *expr() {
                 ptr_node = new_node(ND_ADDR, ptr_node, NULL, ptr_node->type);
                 ptr_node->lvar = lvar;
 
-                node = calloc(1, sizeof(Node));
-                node->kind = ND_BLOCK;
-                Node *block = node;
-
                 int i = 0;
-                int size = sizeof_parse(lvar->type->ptr_to);
                 if (consume("{")) {
                     if (!consume("}")) {
-                        block->lhs = new_node(ND_ASSIGN, new_node(ND_DEREF, new_node(ND_ADD, new_node_num((i++) * size), ptr_node, ptr_node->type), NULL, ptr_node->type->ptr_to), assign(), ptr_node->type->ptr_to);
-                        block->rhs = calloc(1, sizeof(Node));
-                        block = block->rhs;
-                        block->kind = ND_BLOCK;
-                        while(consume(",")) {
-                            block->lhs = new_node(ND_ASSIGN, new_node(ND_DEREF, new_node(ND_ADD, new_node_num((i++) * size), ptr_node, ptr_node->type), NULL, ptr_node->type->ptr_to), assign(), ptr_node->type->ptr_to);
-                            block->rhs = calloc(1, sizeof(Node));
-                            block = block->rhs;
-                            block->kind = ND_BLOCK;
+                        while(1) {
+                            node = block_node(assign_node(deref_node(add_node(ptr_node, new_node_num(i++))), assign()), node);
+                            if (consume("}")) break;
+                            expect(",");
                         }
                         if (lvar->offset != -1) {
                             for(; i < lvar->type->array_size; i++) {
-                                block->lhs = new_node(ND_ASSIGN, new_node(ND_DEREF, new_node(ND_ADD, new_node_num(i * size), ptr_node, ptr_node->type), NULL, ptr_node->type->ptr_to), new_node_num(0), ptr_node->type->ptr_to);
-                                block->rhs = calloc(1, sizeof(Node));
-                                block = block->rhs;
-                                block->kind = ND_BLOCK;
+                                node = block_node(assign_node(deref_node(add_node(ptr_node, new_node_num(i))), new_node_num(0)), node);
                             }
                             if (i > lvar->type->array_size) {
                                 error_at(token->str, "配列が長すぎます");
@@ -704,14 +718,10 @@ Node *expr() {
                         } else {
                             assign_lvar_arr(lvar, i);
                         }
-                        expect("}");
                     } else {
                         if (lvar->offset != -1) {
-                            for(int i = 0; i < lvar->type->array_size; i++) {
-                                block->lhs = new_node(ND_ASSIGN, new_node(ND_DEREF, new_node(ND_ADD, new_node_num(i * size), ptr_node, ptr_node->type), NULL, ptr_node->type->ptr_to), new_node_num(0), ptr_node->type->ptr_to);
-                                block->rhs = calloc(1, sizeof(Node));
-                                block = block->rhs;
-                                block->kind = ND_BLOCK;
+                            for(i = 0; i < lvar->type->array_size; i++) {
+                                node = block_node(assign_node(deref_node(add_node(ptr_node, new_node_num(i))), new_node_num(0)), node);
                             }
                         } else {
                             assign_lvar_arr(lvar, 0);
@@ -720,25 +730,16 @@ Node *expr() {
                 } else if (token->kind == TK_STR) {
                     char *p = token->str + 1;
                     while (*p != '"') {
-                        block->lhs = new_node(ND_ASSIGN, new_node(ND_DEREF, new_node(ND_ADD, new_node_num(i++), ptr_node, ptr_node->type), NULL, ptr_node->type->ptr_to), new_node_num(*(p++)), ptr_node->type->ptr_to);
-                        block->rhs = calloc(1, sizeof(Node));
-                        block = block->rhs;
-                        block->kind = ND_BLOCK;
+                        node = block_node(assign_node(deref_node(add_node(ptr_node, new_node_num(i++))), new_node_num(*(p++))), node);
                     }
-                    block->lhs = new_node(ND_ASSIGN, new_node(ND_DEREF, new_node(ND_ADD, new_node_num(i++), ptr_node, ptr_node->type), NULL, ptr_node->type->ptr_to), new_node_num(0), ptr_node->type->ptr_to);
-                    block->rhs = calloc(1, sizeof(Node));
-                    block = block->rhs;
-                    block->kind = ND_BLOCK;
+                    node = block_node(assign_node(deref_node(add_node(ptr_node, new_node_num(i++))), new_node_num(0)), node);
                     if (lvar->offset != -1) {
-                        while (i < lvar->type->array_size) {
-                            block->lhs = new_node(ND_ASSIGN, new_node(ND_DEREF, new_node(ND_ADD, new_node_num(i++), ptr_node, ptr_node->type), NULL, ptr_node->type->ptr_to), new_node_num(0), ptr_node->type->ptr_to);
-                            block->rhs = calloc(1, sizeof(Node));
-                            block = block->rhs;
-                            block->kind = ND_BLOCK;
+                        for (; i < lvar->type->array_size; i++) {
+                            node = block_node(assign_node(deref_node(add_node(ptr_node, new_node_num(i))), new_node_num(0)), node);
                         }
-                    }
-                    if (lvar->offset != -1 && i > lvar->type->array_size) {
-                        error_at(p, "文字列が長すぎます");
+                        if (i > lvar->type->array_size) {
+                            error_at(p, "文字列が長すぎます");
+                        }
                     } else {
                         assign_lvar_arr(lvar, i);
                     }
@@ -761,7 +762,7 @@ Node *assign() {
 
     if(consume("=")) {
         Node *right = assign();
-        node = new_node(ND_ASSIGN, node, right, right->type);
+        node = assign_node(node, right);
     }
     return node;
 }
@@ -881,22 +882,14 @@ Node *add() {
     for(;;) {
         if (consume("+")) {
             right = mul();
-            if(node->type->ty == PTR && right->type->ty == PTR) {
-                error_at(token->str, "ptr + ptrは未定義です");
-            }
-            else if(node->type->ty == PTR)
-                node = new_node(ND_ADD, node, new_node(ND_MUL, new_node_num(sizeof_parse(node->type->ptr_to)), right, &int_type), node->type);
-            else if(right->type->ty == PTR)
-                node = new_node(ND_ADD, new_node(ND_MUL, new_node_num(sizeof_parse(node->type->ptr_to)), node, &int_type), right, right->type);
-            else
-                node = new_node(ND_ADD, node, right, &int_type);
+            node = add_node(node ,right);
         }
         else if (consume("-")) {
             right = mul();
             if(node->type->ty == PTR && right->type->ty == PTR)
-                error_at(token->str, "ptr - ptrは未定義です");
+                node = new_node(ND_SUB, node, right, &int_type);
             else if(node->type->ty == PTR)
-                node = new_node(ND_SUB, node, new_node(ND_MUL, new_node_num(sizeof_parse(node->type->ptr_to)), right, &int_type), node->type);
+                node = new_node(ND_SUB, node, new_node(ND_MUL, new_node_num(sizeof_parse(node->type->ptr_to)), right, NULL), node->type);
             else if(right->type->ty == PTR)
                 error_at(token->str, "int - ptrは未定義です");
             else
@@ -979,15 +972,7 @@ Node *unary() {
     node = primary();
     if (consume("[")) {
         Node *n = expr();
-        if (node->type->ty == PTR && n->type->ty == PTR) {
-            error("ptr + ptr");
-        } else if (node->type->ty == PTR) {
-            node = new_node(ND_DEREF, new_node(ND_ADD, node, new_node(ND_MUL, n, new_node_num(sizeof_parse(node->type->ptr_to)), &int_type), node->type), NULL, node->type->ptr_to);
-        } else if (n->type->ty == PTR) {
-            node = new_node(ND_DEREF, new_node(ND_ADD, new_node(ND_MUL, node, new_node_num(sizeof_parse(n->type->ptr_to)), &int_type), n, n->type), NULL, n->type->ptr_to);
-        } else {
-            error("arr deref");
-        }
+        node = deref_node(add_node(node, n));
         expect("]");
     }
     return node;

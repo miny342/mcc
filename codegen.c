@@ -192,17 +192,6 @@ void gen_call(Node *node) {
     }
 }
 
-void gen_block(Node *node) {
-    if (node->kind != ND_BLOCK)
-        error("this is not block");
-
-    Node *n = node;
-    while (n) {
-        gen(n->lhs);
-        n = n->rhs;
-    }
-}
-
 // nodeからアセンブリを吐く
 // raxに結果を残す
 void gen(Node *node) {
@@ -288,7 +277,8 @@ void gen(Node *node) {
             printf(".Lend%d:\n", loopval);
             return;
         case ND_BLOCK:
-            gen_block(node);
+            gen(node->rhs);
+            gen(node->lhs);
             return;
         case ND_CALL:
             gen_call(node);
