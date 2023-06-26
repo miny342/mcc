@@ -352,6 +352,100 @@ void gen(Node *node) {
         case ND_DECLARATION:
             gen(node->lhs);
             return;
+        case ND_NEG:
+            gen(node->lhs);
+            printf("  neg rax\n");
+            return;
+        case ND_NOT:
+            gen(node->lhs);
+            printf("  test rax, rax\n");
+            printf("  sete al\n");
+            printf("  movzb rax, al\n");
+            return;
+        case ND_BITNOT:
+            gen(node->lhs);
+            printf("  not rax\n");
+            return;
+        case ND_INCR:
+            if (node->lhs) {
+                gen_lval(node->lhs);
+                if (node->type->ty == PTR) {
+                    printf("  add qword ptr [rax], %d\n", sizeof_parse(node->type->ptr_to));
+                    printf("  mov rax, qword ptr [rax]\n");
+                } else {
+                    size = sizeof_parse(node->type);
+                    if (size == 1) {
+                        printf("  add byte ptr [rax], 1\n");
+                        printf("  movzx rax, byte ptr [rax]\n");
+                    } else if (size == 4) {
+                        printf("  add dword ptr [rax], 1\n");
+                        printf("  movsx rax, dword ptr [rax]\n");
+                    } else {
+                        printf("  add qword ptr [rax], 1\n");
+                        printf("  mov rax, qword ptr [rax]\n");
+                    }
+                }
+            } else {
+                gen_lval(node->rhs);
+                if (node->type->ty == PTR) {
+                    printf("  mov rdi, qword ptr [rax]\n");
+                    printf("  add qword ptr [rax], %d\n", sizeof_parse(node->type->ptr_to));
+                } else {
+                    size = sizeof_parse(node->type);
+                    if (size == 1) {
+                        printf("  movzx rdi, byte ptr [rax]\n");
+                        printf("  add byte ptr [rax], 1\n");
+                    } else if (size == 4) {
+                        printf("  movsx rdi, dword ptr [rax]\n");
+                        printf("  add dword ptr [rax], 1\n");
+                    } else {
+                        printf("  mov rdi, qword ptr [rax]\n");
+                        printf("  add qword ptr [rax], 1\n");
+                    }
+                }
+                printf("  mov rax, rdi\n");
+            }
+            return;
+        case ND_DECR:
+            if (node->lhs) {
+                gen_lval(node->lhs);
+                if (node->type->ty == PTR) {
+                    printf("  sub qword ptr [rax], %d\n", sizeof_parse(node->type->ptr_to));
+                    printf("  mov rax, qword ptr [rax]\n");
+                } else {
+                    size = sizeof_parse(node->type);
+                    if (size == 1) {
+                        printf("  sub byte ptr [rax], 1\n");
+                        printf("  movzx rax, byte ptr [rax]\n");
+                    } else if (size == 4) {
+                        printf("  sub dword ptr [rax], 1\n");
+                        printf("  movsx rax, dword ptr [rax]\n");
+                    } else {
+                        printf("  sub qword ptr [rax], 1\n");
+                        printf("  mov rax, qword ptr [rax]\n");
+                    }
+                }
+            } else {
+                gen_lval(node->rhs);
+                if (node->type->ty == PTR) {
+                    printf("  mov rdi, qword ptr [rax]\n");
+                    printf("  sub qword ptr [rax], %d\n", sizeof_parse(node->type->ptr_to));
+                } else {
+                    size = sizeof_parse(node->type);
+                    if (size == 1) {
+                        printf("  movzx rdi, byte ptr [rax]\n");
+                        printf("  sub byte ptr [rax], 1\n");
+                    } else if (size == 4) {
+                        printf("  movsx rdi, dword ptr [rax]\n");
+                        printf("  sub dword ptr [rax], 1\n");
+                    } else {
+                        printf("  mov rdi, qword ptr [rax]\n");
+                        printf("  sub qword ptr [rax], 1\n");
+                    }
+                }
+                printf("  mov rax, rdi\n");
+            }
+            return;
     }
 
     gen(node->lhs);

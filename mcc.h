@@ -147,7 +147,11 @@ typedef enum {
     ND_AND, // &&
     ND_OR, // ||
     ND_DECLARATION, // 変数宣言
-
+    ND_NEG, // -a
+    ND_INCR, // ++
+    ND_DECR, // --
+    ND_NOT, // !
+    ND_BITNOT, // ~
 } NodeKind;
 
 // 抽象構文木のノードの型
@@ -171,6 +175,7 @@ void program();
 Node *stmt();
 Node *expr();
 Node *assign();
+Node *if_op();
 Node *logic_or();
 Node *logic_and();
 Node *bit_or();

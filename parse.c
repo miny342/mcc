@@ -223,10 +223,11 @@ Token *tokenize(char *p) {
             continue;
         }
 
-        if (strncmp(p, "...", 3) == 0 && !is_alnum(p[3])) {
-            cur = new_token(TK_RESERVED, cur, p, 3);
-            p += 3;
-            continue;
+        if (strncmp(p, "...", 3) == 0 || strncmp(p, "<<=", 3) == 0 ||
+            strncmp(p, ">>=", 3) == 0) {
+                cur = new_token(TK_RESERVED, cur, p, 3);
+                p += 3;
+                continue;
         }
 
         if (strncmp(p, "if", 2) == 0 && !is_alnum(p[2])) {
@@ -262,7 +263,12 @@ Token *tokenize(char *p) {
         if (strncmp(p, "==", 2) == 0 || strncmp(p, "!=", 2) == 0 ||
             strncmp(p, "<=", 2) == 0 || strncmp(p, ">=", 2) == 0 ||
             strncmp(p, "<<", 2) == 0 || strncmp(p, ">>", 2) == 0 ||
-            strncmp(p, "&&", 2) == 0 || strncmp(p, "||", 2) == 0) {
+            strncmp(p, "&&", 2) == 0 || strncmp(p, "||", 2) == 0 ||
+            strncmp(p, "++", 2) == 0 || strncmp(p, "--", 2) == 0 ||
+            strncmp(p, "+=", 2) == 0 || strncmp(p, "-=", 2) == 0 ||
+            strncmp(p, "*=", 2) == 0 || strncmp(p, "/=", 2) == 0 ||
+            strncmp(p, "%=", 2) == 0 || strncmp(p, "&=", 2) == 0 ||
+            strncmp(p, "|=", 2) == 0 || strncmp(p, "^=", 2) == 0) {
                 cur = new_token(TK_RESERVED, cur, p, 2);
                 p += 2;
                 continue;
@@ -277,7 +283,7 @@ Token *tokenize(char *p) {
             continue;
         }
 
-        if (strchr("+-*/()<>;={},&[]%^|", *p)) {
+        if (strchr("+-*/()<>;={},&[]%^|?:~!", *p)) {
             cur = new_token(TK_RESERVED, cur, p++, 1);
             continue;
         }
@@ -337,15 +343,24 @@ Node *calc_node(Node *node) {
     node->lhs = calc_node(node->lhs);
     node->rhs = calc_node(node->rhs);
 
-    if (!node->lhs || !node->rhs) {
-        return node;
-    }
-
-    if (node->lhs->kind != ND_NUM || node->rhs->kind != ND_NUM) {
+    if (!node->lhs || node->lhs->kind != ND_NUM) {
         return node;
     }
 
     int l = node->lhs->val;
+    switch (node->kind) {
+        case ND_NEG:
+            return new_node_num(-l);
+        case ND_NOT:
+            return new_node_num(!l);
+        case ND_BITNOT:
+            return new_node_num(~l);
+    }
+
+    if (!node->rhs || node->rhs->kind != ND_NUM) {
+        return node;
+    }
+
     int r = node->rhs->val;
     int res;
 
@@ -577,6 +592,19 @@ Node *add_node(Node *lhs, Node *rhs) {
     return new_node(ND_ADD, lhs, rhs, lhs->type);
 }
 
+Node *sub_node(Node *lhs, Node *rhs) {
+    if(lhs->type->ty == PTR && rhs->type->ty == PTR) {
+        return new_node(ND_SUB, lhs, rhs, &int_type);
+    }
+    if(lhs->type->ty == PTR) {
+        return new_node(ND_SUB, lhs, new_node(ND_MUL, new_node_num(sizeof_parse(lhs->type->ptr_to)), rhs, NULL), lhs->type);
+    }
+    if(rhs->type->ty == PTR) {
+        error_at(token->str, "int - ptrは未定義です");
+    }
+    return new_node(ND_SUB, lhs, rhs, &int_type);
+}
+
 Node *deref_node(Node *n) {
     if (n->type->ty != PTR) {
         error_at(token->str, "derefできません");
@@ -745,6 +773,7 @@ void globalstmt(GVar **ptr) {
             error_at(token->str, "配列の初期化ができません");
         }
         expect(";");
+        gvar->node = calc_node(gvar->node);
         *ptr = gvar;
     }
 }
@@ -880,11 +909,89 @@ Node *expr() {
 
 // logic_or ( = assign )*
 Node *assign() {
-    Node *node = logic_or();
+    Node *node = if_op();
 
     if(consume("=")) {
         Node *right = assign();
-        node = assign_node(node, right);
+        return assign_node(node, right);
+    }
+    if(consume("+=")) {
+        Node *right = assign();
+        return assign_node(node, add_node(node, right));
+    }
+    if(consume("-=")) {
+        Node *right = assign();
+        return assign_node(node, sub_node(node, right));
+    }
+    if(consume("*=")) {
+        Node *right = assign();
+        if (node->type->ty == PTR || right->type->ty == PTR) {
+            error_at(token->str, "ポインタの掛け算は未定義です");
+        }
+        return assign_node(node, new_node(ND_MUL, node, right, &int_type));
+    }
+    if(consume("/=")) {
+        Node *right = assign();
+        if (node->type->ty == PTR || right->type->ty == PTR) {
+            error_at(token->str, "ポインタの割り算は未定義です");
+        }
+        return assign_node(node, new_node(ND_DIV, node, right, &int_type));
+    }
+    if(consume("%=")) {
+        Node *right = assign();
+        if (node->type->ty == PTR || right->type->ty == PTR) {
+            error_at(token->str, "ポインタの余剰は未定義です");
+        }
+        return assign_node(node, new_node(ND_REMINDER, node, right, &int_type));
+    }
+    if(consume("<<=")) {
+        Node *right = assign();
+        if (node->type->ty == PTR || right->type->ty == PTR) {
+            error_at(token->str, "ポインタのシフト計算は未定義です");
+        }
+        return assign_node(node, new_node(ND_LSHIFT, node, right, &int_type));
+    }
+    if(consume(">>=")) {
+        Node *right = assign();
+        if (node->type->ty == PTR || right->type->ty == PTR) {
+            error_at(token->str, "ポインタのシフト計算は未定義です");
+        }
+        return assign_node(node, new_node(ND_RSHIFT, node, right, &int_type));
+    }
+    if(consume("&=")) {
+        Node *right = assign();
+        if (node->type->ty == PTR || right->type->ty == PTR) {
+            error_at(token->str, "ポインタのAND計算は未定義です");
+        }
+        return assign_node(node, new_node(ND_BITAND, node, right, &int_type));
+    }
+    if(consume("|=")) {
+        Node *right = assign();
+        if (node->type->ty == PTR || right->type->ty == PTR) {
+            error_at(token->str, "ポインタのOR計算は未定義です");
+        }
+        return assign_node(node, new_node(ND_BITOR, node, right, &int_type));
+    }
+    if(consume("^=")) {
+        Node *right = assign();
+        if (node->type->ty == PTR || right->type->ty == PTR) {
+            error_at(token->str, "ポインタのXOR計算は未定義です");
+        }
+        return assign_node(node, new_node(ND_BITXOR, node, right, &int_type));
+    }
+
+    return node;
+}
+
+// logic_or (? assign : logic_or)?
+Node *if_op() {
+    Node *node = logic_or();
+
+    if(consume("?")) {
+        Node *middle = assign(); // ?:の間はかっこで囲まれている扱い
+        expect(":");
+        Node *last = logic_or();
+        node = new_node(ND_IF, node, new_node(ND_ELSE, middle, last, NULL), middle->type);
     }
     return node;
 }
@@ -1008,14 +1115,7 @@ Node *add() {
         }
         else if (consume("-")) {
             right = mul();
-            if(node->type->ty == PTR && right->type->ty == PTR)
-                node = new_node(ND_SUB, node, right, &int_type);
-            else if(node->type->ty == PTR)
-                node = new_node(ND_SUB, node, new_node(ND_MUL, new_node_num(sizeof_parse(node->type->ptr_to)), right, NULL), node->type);
-            else if(right->type->ty == PTR)
-                error_at(token->str, "int - ptrは未定義です");
-            else
-                node = new_node(ND_SUB, node, right, &int_type);
+            node = sub_node(node, right);
         }
         else
             return node;
@@ -1051,17 +1151,17 @@ Node *mul() {
     }
 }
 
-// ("+" | "-")? primary (("[" assign "]")* | "(" assign ")" )  |  ("*" | "&") unary  |  sizeof unary
+// primary (("[" assign "]")* | "(" assign,* ")" | ++ | -- )  |  ("*" | "&" | + | - | ! | ~) unary  |  sizeof unary
 Node *unary() {
     Node *node;
     Type *tmp;
     if (consume("+"))
-        return primary();
+        return unary();
     if (consume("-")) {
-        node = primary();
+        node = unary();
         if (node->type->ty == PTR)
             error_at(token->str, "-ptr is not defined");
-        return new_node(ND_SUB, new_node_num(0), node, &int_type);
+        return new_node(ND_NEG, node, NULL, node->type);
     }
     if (consume("*")) {
         if (consume("&")) return unary();
@@ -1090,6 +1190,22 @@ Node *unary() {
         } else {
             return new_node_num(sizeof_parse(node->lvar->type));
         }
+    }
+    if (consume("++")) {
+        node = unary();
+        return new_node(ND_INCR, node, NULL, node->type);
+    }
+    if (consume("--")) {
+        node = unary();
+        return new_node(ND_DECR, node, NULL, node->type);
+    }
+    if (consume("!")) {
+        node = unary();
+        return new_node(ND_NOT, node, NULL, node->type);
+    }
+    if (consume("~")) {
+        node = unary();
+        return new_node(ND_BITNOT, node, NULL, node->type); // TODO: charをintとして扱う
     }
     node = primary();
     Node *right;
@@ -1123,6 +1239,10 @@ Node *unary() {
                 expect(")");
             }
             node = n;
+        } else if (consume("++")) {
+            node = new_node(ND_INCR, NULL, node, node->type);
+        } else if (consume("--")) {
+            node = new_node(ND_DECR, NULL, node, node->type);
         } else
             return node;
     }
