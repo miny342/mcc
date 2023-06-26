@@ -253,7 +253,7 @@ void gen(Node *node) {
             blabel = break_label;
             clabel = continue_label;
             break_label = loopval + 1;
-            clabel = loopval;
+            continue_label = loopval;
             printf(".L%d:\n", loopval);
             gen(node->lhs);
             printf("  cmp rax, 0\n");
