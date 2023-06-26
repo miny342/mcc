@@ -331,22 +331,6 @@ GVar *find_gvar(Token *tok) {
     return NULL;
 }
 
-Type *eval_type() {
-    Type *type = calloc(1, sizeof(Type));
-    if(consumeTK(TK_INT)) {
-        type->ty = INT;
-    } else if (consumeTK(TK_CHAR)) {
-        type->ty = CHAR;
-    } else if (consume("...")) {
-        type->ty = VA_ARGS;
-    } else if (consumeTK(TK_VOID)) {
-        type->ty = VOID;
-    } else {
-        error_at(token->str, "no int or char");
-    }
-    return type;
-}
-
 // 事前計算が単純な範囲で計算を行う
 Node *calc_node(Node *node) {
     if (!node)
@@ -450,6 +434,185 @@ int sizeof_parse(Type *type) {
         return type->array_size * sizeof_parse(type->ptr_to);
     if (type->ty == CHAR || type->ty == VOID)
         return sizeof(char);
+}
+
+// 不完全な型を返す。bottomに、不完全な末端があるので埋めること
+Type *eval_type_acc(Token **ident, Type **bottom) {
+
+    // ポインタが一つ以上の時、topが先頭、btmが末端になるよう読む
+    Type *top = NULL;
+    Type *btm = NULL;
+    while(consume("*")) {
+        if (top == NULL) {  // 初回
+            top = calloc(1, sizeof(Type));
+            btm = top;
+        } else {
+            btm->ptr_to = calloc(1, sizeof(Type));
+            btm = btm->ptr_to;
+        }
+        btm->ty = PTR;
+    }
+
+    // ()で囲まれていると、その中の型計算を優先する
+    Type *tmp_top = NULL;
+    Type *tmp_btm = NULL;
+    if (consume("(")) {
+        tmp_top = eval_type_acc(ident, &tmp_btm);
+        expect(")");
+    }
+
+    // identは飛ばすかアドレスに入れる
+    if (ident && !*ident) {
+        *ident = consume_ident();
+    } else {
+        consume_ident();
+    }
+
+    // ()なら関数、[]なら配列 []は並べることができる
+    Type *top_ = NULL;
+    Type *btm_ = NULL;
+    while(1) {
+        if (consume("(")) {
+            if (top_ == NULL) {
+                top_ = calloc(1, sizeof(Type));
+                btm_ = top_;
+            } else {
+                if (top_->ty == FUNC) {
+                    error_at(token->str, "関数を返す関数は利用できません");
+                } else if (top_->ty == ARRAY) {
+                    error_at(token->str, "関数の配列は利用できません");
+                } else {
+                    error_at(token->str, "unexpected error func");
+                }
+            }
+            btm_->ty = FUNC;
+            Type **args = &btm_->args;
+            if (!consume(")")) {
+                // 引数を読む
+                while(1) {
+                    Token *tk = NULL;
+                    *args = eval_type_all(&tk);
+                    if (tk) {
+                        fprintf(stderr, "drop token %.*s\n", tk->len, tk->str);
+                    }
+                    btm_->arglen += 1;
+                    if ((*args)->ty == VA_ARGS || !consume(",")) break;
+                    args = &(*args)->args;
+                }
+                expect(")");
+            }
+        } else if (consume("[")) {
+            if (top_ == NULL) {
+                top_ = calloc(1, sizeof(Type));
+                btm_ = top_;
+            } else if (btm_->ty != FUNC) {
+                btm_->ptr_to = calloc(1, sizeof(Type));
+                btm_ = btm_->ptr_to;
+            } else {
+                error_at(token->str, "配列を返す関数は利用できません");
+            }
+            btm_->ty = ARRAY;
+            if (consume("]")) {
+                btm_->array_size = -1; // 長さが不定の場合は-1
+            } else {
+                btm_->array_size = calc(logic_or());
+                expect("]");
+            }
+        } else {
+            break;
+        }
+    }
+
+    // top, btmに上記の型情報をまとめる
+
+    // top_, btm_とtop, btmを結合
+    if (top_) {
+        if (top == NULL) {
+            btm = btm_;
+        }
+        if (btm_->ty == FUNC) {
+            btm_->ret = top;
+        } else if (btm_->ty == ARRAY) {
+            btm_->ptr_to = top;
+        } else {
+            error_at(token->str, "unexpected error top_");
+        }
+        top = top_;
+    }
+
+    // tmp_top, tmp_btmとtop, btmを結合
+    if (tmp_top) {
+        if (top == NULL) {
+            btm = tmp_btm;
+        } else if (tmp_btm->ty == FUNC) {
+            if (top->ty == ARRAY) {
+                error_at(token->str, "配列を返す関数は利用できません");
+            } else if (top->ty == FUNC) {
+                error_at(token->str, "関数を返す関数は利用できません");
+            }
+            tmp_btm->ret = top;
+        } else if (tmp_btm->ty == ARRAY) {
+            if (top->ty == FUNC) {
+                error_at(token->str, "関数の配列は利用できません");
+            }
+            tmp_btm->ptr_to = top;
+        } else if (tmp_btm->ty == PTR) {
+            tmp_btm->ptr_to = top;
+        } else {
+            error_at(token->str, "unexpected error tmp_top");
+        }
+        top = tmp_top;
+    }
+
+    // btm == NULLかつtop == NULLか、btm != NULLかつtop != NULLしかとらない(はず)
+    *bottom = btm;
+    return top;
+}
+
+// 完全な型を返す identは変数名など
+Type *eval_type_all(Token **ident) {
+    Type *type = calloc(1, sizeof(Type));
+    if(consumeTK(TK_INT)) {
+        type->ty = INT;
+    } else if (consumeTK(TK_CHAR)) {
+        type->ty = CHAR;
+    } else if (consume("...")) {
+        type->ty = VA_ARGS;
+    } else if (consumeTK(TK_VOID)) {
+        type->ty = VOID;
+    } else {
+        error_at(token->str, "no int or char");
+    }
+    Type *btm = NULL;
+    Type *top = eval_type_acc(ident, &btm);
+    if (btm) {
+        if (btm->ty == FUNC) {
+            btm->ret = type;
+        } else if (btm->ty == ARRAY || btm->ty == PTR) {
+            btm->ptr_to = type;
+        } else {
+            error_at(token->str, "unexpected error all btm, %d\n", btm->ty);
+        }
+    } else {
+        return type;
+    }
+    return top;
+}
+
+Type *eval_type() {
+    Type *type = calloc(1, sizeof(Type));
+    if(consumeTK(TK_INT)) {
+        type->ty = INT;
+    } else if (consumeTK(TK_CHAR)) {
+        type->ty = CHAR;
+    } else if (consume("...")) {
+        type->ty = VA_ARGS;
+    } else if (consumeTK(TK_VOID)) {
+        type->ty = VOID;
+    } else {
+        error_at(token->str, "no int or char");
+    }
+    return type;
 }
 
 LVar *assign_lvar(Type *type) {
@@ -636,6 +799,55 @@ Node *block_node(Node *child, Node *prev) {
     return node;
 }
 
+char *type_name_arr[] = {
+    "int", "ptr", "array", "char", "func", "...", "void",
+};
+
+void show_type(Type *type, int indent) {
+    if (type == NULL) {
+        fprintf(stderr, "%*sNULL\n", indent, "");
+        return;
+    }
+    fprintf(stderr, "%*sType: %s\n", indent, "", type_name_arr[type->ty]);
+    if (type->ty == PTR) {
+        show_type(type->ptr_to, indent + 2);
+    } else if (type->ty == ARRAY) {
+        fprintf(stderr, "%*slen: %d\n", indent + 2, "", type->array_size);
+        show_type(type->ptr_to, indent + 2);
+    } else if (type->ty == FUNC) {
+        fprintf(stderr, "%*sargs:\n", indent + 2, "");
+        Type *t = type->args;
+        for(; t; t = t->args) {
+            show_type(t, indent + 4);
+        }
+        fprintf(stderr, "%*sreturn:\n", indent + 2, "");
+        show_type(type->ret, indent + 4);
+    }
+}
+
+void type_test() {
+    while(!at_eof()) {
+        Token *ident = NULL;
+        Type *type = eval_type_all(&ident);
+        fprintf(stderr, "ident: %.*s\n", ident->len, ident->str);
+        show_type(type, 0);
+        fprintf(stderr, "\n");
+        if (consume("{")) {
+            int i = 1;
+            while (1) {
+                if (consume("{")) i++;
+                else if (consume("}")) i--;
+                else token = token->next;
+                if (i == 0) break;
+            }
+        } else if (!consume(";")) {
+            error_at(token->str, "type parse error");
+        }
+    }
+
+    exit(1);
+}
+
 void program() {
     GVar **tmp = &code;
     globalstmt(tmp);
@@ -679,7 +891,7 @@ void globalstmt(GVar **ptr) {
                 if(!consume(",")) break;
             }
             ftype->arglen = i;
-            ftype->args = lvar;
+            // ftype->args = lvar;
             tmp = locals;
             for(lvar = locals; lvar; lvar = lvar->next) {
                 if (lvar->offset > 6 * 8) {

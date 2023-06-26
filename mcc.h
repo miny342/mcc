@@ -76,9 +76,9 @@ struct Type {
         VOID,
     } ty;
     Type *ptr_to;
-    size_t array_size;
+    int array_size;
     Type *ret; // ty == FUNCの時の返り値
-    LVar *args; // ty == FUNCの時の引数の列
+    Type *args; // ty == FUNCの時の引数の列
     int arglen; // ty == FUNCの時の引数の数
 };
 
@@ -170,6 +170,9 @@ struct Node {
     GVar *gvar;    // kind == ND_GLOVAL_LVAR
 };
 
+Type *eval_type_acc(Token **ident, Type **bottom);
+Type *eval_type_all(Token **ident);
+void type_test();
 
 int sizeof_parse(Type *type);
 void globalstmt(GVar **ptr);

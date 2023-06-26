@@ -1,8 +1,15 @@
+void *(*(*f(int a))(int))(int);
+void (*signal(int, void (*)(int)))(int);
+int (*(*a(void))[10])(void);
+int c[12][34];
+int (c2[12])[];
+
 int printf(char *s, ...);
-int exit(int status);
+void exit(int status);
 void print(int i);
 int *alloc4(int a, int b, int c, int d);
 
+test
 
 #define assert(name, expr, expect) \
 int name ## _assert () expr \
