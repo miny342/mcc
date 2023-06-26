@@ -229,6 +229,36 @@ assert(t49, {char *c = "???"; printf("%s\n", c); return c[1];}, 63)
 assert(t50, {int a = 1; a <<= 2; a >>= 1; a++; a *= 4; a = ~a; a = -a; int b = a--; return b;}, 13)
 assert(t51, {int a = 1; int b = ++a; b <<= 3; b %= 13; b /= 2; return b;}, 1)
 assert(t52, {int i = 1; int o = 0;return !((i && o) || (i && i));}, 0)
+assert(t53, {
+    int i;
+    for (i = 0; i < 100; i++) {
+        if (i == 50) {
+            break;
+        } else {
+            continue;
+        }
+        printf("do not show\n");
+    }
+    return i;
+}, 50)
+assert(t54, {
+    int i;
+    int flag = 0;
+    int j = 0;
+    while(1) {
+        for (i = 0; i < 100; i++) {
+            if (200 - j == i) {
+                flag = 1;
+                break;
+            }
+        }
+        if (flag) {
+            break;
+        }
+        j++;
+    }
+    return j;
+}, 101)
 
 int a = 1;
 int *d[10] = { &a + 1, &a + 2 };
@@ -244,7 +274,7 @@ int main() {
     t21();t22();t23();t24();t25();t26();t27();t28();t29();t30();
     t31();t32();t33();t34();t35();t36();t37();t38();t39();t40();
     t41();t42();t43();t44();t45();t46();t47();t48();t49();t50();
-    t51();t52();
+    t51();t52();t53();t54();
 
     printf("OK\n");
 }

@@ -175,6 +175,12 @@ Token *tokenize(char *p) {
             continue;
         }
 
+        if (strncmp(p, "continue", 8) == 0 && !is_alnum(p[8])) {
+            cur = new_token(TK_CONTINUE, cur, p, 8);
+            p += 8;
+            continue;
+        }
+
         if (strncmp(p, "return", 6) == 0 && !is_alnum(p[6])) {
             cur = new_token(TK_RETURN, cur, p, 6);
             p += 6;
@@ -189,6 +195,12 @@ Token *tokenize(char *p) {
 
         if (strncmp(p, "while", 5) == 0 && !is_alnum(p[5])) {
             cur = new_token(TK_WHILE, cur, p, 5);
+            p += 5;
+            continue;
+        }
+
+        if (strncmp(p, "break", 5) == 0 && !is_alnum(p[5])) {
+            cur = new_token(TK_BREAK, cur, p, 5);
             p += 5;
             continue;
         }
@@ -824,8 +836,13 @@ Node *stmt() {
         while(!consume("}")) {
             node = block_node(stmt(), node);
         }
-    }
-    else {
+    } else if(consumeTK(TK_BREAK)) {
+        node = new_node(ND_BREAK, NULL, NULL, NULL);
+        expect(";");
+    } else if(consumeTK(TK_CONTINUE)) {
+        node = new_node(ND_CONTINUE, NULL, NULL, NULL);
+        expect(";");
+    } else {
         node = expr();
         expect(";");
     }

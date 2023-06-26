@@ -24,6 +24,8 @@ typedef enum {
     TK_CHAR,     // char
     TK_STR,      // string
     TK_VOID,     // void
+    TK_BREAK,    // break
+    TK_CONTINUE, // continue
 } TokenKind;
 
 typedef struct Token Token;
@@ -152,6 +154,8 @@ typedef enum {
     ND_DECR, // --
     ND_NOT, // !
     ND_BITNOT, // ~
+    ND_CONTINUE, // continue
+    ND_BREAK, // break
 } NodeKind;
 
 // 抽象構文木のノードの型
@@ -195,7 +199,9 @@ void gen(Node *node);
 void gen_global();
 int gen_gvar(Node *node);
 
-extern int loopcnt;
+extern int labelcnt;
+extern int continue_label; // 0ならループ外、1ならループ内、それ以外はジャンプ先
+extern int break_label; // 同様
 
 // tool
 

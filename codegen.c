@@ -209,8 +209,7 @@ void gen_call(Node *node) {
 // nodeからアセンブリを吐く
 // raxに結果を残す
 void gen(Node *node) {
-    int loopval;
-    int size;
+    int loopval, size, clabel, blabel;
     if(node == NULL) return;
 
     switch (node->kind) {
@@ -249,46 +248,64 @@ void gen(Node *node) {
             }
             return;
         case ND_WHILE:
-            loopval = loopcnt;
-            loopcnt += 1;
-            printf(".Lbegin%d:\n", loopval);
+            loopval = labelcnt;
+            labelcnt += 2;
+            blabel = break_label;
+            clabel = continue_label;
+            break_label = loopval + 1;
+            clabel = loopval;
+            printf(".L%d:\n", loopval);
             gen(node->lhs);
             printf("  cmp rax, 0\n");
-            printf("  je .Lend%d\n", loopval);
+            printf("  je .L%d\n", loopval + 1);
             gen(node->rhs);
-            printf("  jmp .Lbegin%d\n", loopval);
-            printf(".Lend%d:\n", loopval);
+            printf("  jmp .L%d\n", loopval);
+            printf(".L%d:\n", loopval + 1);
+            break_label = blabel;
+            continue_label = clabel;
             return;
         case ND_IF:
-            loopval = loopcnt;
-            loopcnt += 1;
-            gen(node->lhs);
-            printf("  cmp rax, 0\n");
+            loopval = labelcnt;
             if(node->rhs->kind == ND_ELSE) {
-                printf("  je .Lelse%d\n", loopval);
+                labelcnt += 2;
+                gen(node->lhs);
+                printf("  cmp rax, 0\n");
+                printf("  je .L%d\n", loopval);
                 gen(node->rhs->lhs);
-                printf("  jmp .Lend%d\n", loopval);
-                printf(".Lelse%d:\n", loopval);
+                printf("  jmp .L%d\n", loopval + 1);
+                printf(".L%d:\n", loopval);
                 gen(node->rhs->rhs);
-                printf(".Lend%d:\n", loopval);
+                printf(".L%d:\n", loopval + 1);
             } else {
-                printf("  je .Lend%d\n", loopval);
+                labelcnt += 1;
+                gen(node->lhs);
+                printf("  cmp rax, 0\n");
+                printf("  je .L%d\n", loopval);
                 gen(node->rhs);
-                printf(".Lend%d:\n", loopval);
+                printf(".L%d:\n", loopval);
             }
             return;
         case ND_FOR:
-            loopval = loopcnt;
-            loopcnt += 1;
+            loopval = labelcnt;
+            labelcnt += 2;
+            blabel = break_label;
+            clabel = continue_label;
+            break_label = loopval + 1;
+            continue_label = 1;
             gen(node->lhs);
-            printf(".Lbegin%d:\n", loopval);
+            printf(".L%d:\n", loopval);
             gen(node->rhs->lhs);
             printf("  cmp rax, 0\n");
-            printf("  je .Lend%d\n", loopval);
+            printf("  je .L%d\n", loopval + 1);
             gen(node->rhs->rhs->rhs);
+            if (continue_label > 1) {
+                printf(".L%d:\n", continue_label);
+            }
             gen(node->rhs->rhs->lhs);
-            printf("  jmp .Lbegin%d\n", loopval);
-            printf(".Lend%d:\n", loopval);
+            printf("  jmp .L%d\n", loopval);
+            printf(".L%d:\n", loopval + 1);
+            continue_label = clabel;
+            break_label = blabel;
             return;
         case ND_BLOCK:
             gen(node->rhs);
@@ -326,26 +343,26 @@ void gen(Node *node) {
             printf("  lea rax, .LC%d[rip]\n", node->s->offset);
             return;
         case ND_AND:
-            loopval = loopcnt;
-            loopcnt += 1;
+            loopval = labelcnt;
+            labelcnt += 1;
             gen(node->lhs);
             printf("  test rax, rax\n");  // ZF = (rax != 0)
-            printf("  je .Land%d\n", loopval);  // je: ZFが1ならjump <=> raxが0ならjump
+            printf("  je .L%d\n", loopval);  // je: ZFが1ならjump <=> raxが0ならjump
             gen(node->rhs);
             printf("  test rax, rax\n");
-            printf(".Land%d:\n", loopval);
+            printf(".L%d:\n", loopval);
             printf("  setne al\n");  // !ZFを格納
             printf("  movzb rax, al\n");
             return;
         case ND_OR:
-            loopval = loopcnt;
-            loopcnt += 1;
+            loopval = labelcnt;
+            labelcnt += 1;
             gen(node->lhs);
             printf("  test rax, rax\n");
-            printf("  jne .Lor%d\n", loopval); // jne: ZFが0ならjump <=> raxが0でないならjump
+            printf("  jne .L%d\n", loopval); // jne: ZFが0ならjump <=> raxが0でないならjump
             gen(node->rhs);
             printf("  test rax, rax\n");
-            printf(".Lor%d:\n", loopval);
+            printf(".L%d:\n", loopval);
             printf("  setne al\n");
             printf("  movzb rax, al\n");
             return;
@@ -445,6 +462,24 @@ void gen(Node *node) {
                 }
                 printf("  mov rax, rdi\n");
             }
+            return;
+        case ND_BREAK:
+            if (break_label == 0) {
+                error("ループ外でbreakはできません");
+            } else if (break_label == 1) {
+                break_label = labelcnt;
+                labelcnt += 1;
+            }
+            printf("  jmp .L%d\n", break_label);
+            return;
+        case ND_CONTINUE:
+            if (continue_label == 0) {
+                error("ループ外でcontinueはできません");
+            } else if (continue_label == 1) {
+                continue_label = labelcnt;
+                labelcnt += 1;
+            }
+            printf("  jmp .L%d\n", continue_label);
             return;
     }
 

@@ -6,7 +6,9 @@ char *filename;
 GVar *code;
 LVar *locals;
 String *strs;
-int loopcnt = 0;
+int labelcnt = 2;
+int continue_label = 0;
+int break_label = 0;
 
 StrMap *strmap;
 
