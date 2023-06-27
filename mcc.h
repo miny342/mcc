@@ -80,6 +80,7 @@ struct Type {
     Type *ret; // ty == FUNCの時の返り値
     Type *args; // ty == FUNCの時の引数の列
     int arglen; // ty == FUNCの時の引数の数
+    Token *tok; // argsや構造体の名前など
 };
 
 // local variable
@@ -100,7 +101,7 @@ struct GVar {
     GVar *next;
     char *name;
     int len;
-    int offset; // type != func
+    int size; // type != func
     Type *type;
     Node *node; // GVarの初期値またはtype==funcの時の実行ノード
     LVar *locals; // type == func
@@ -171,10 +172,12 @@ struct Node {
 };
 
 Type *eval_type_acc(Token **ident, Type **bottom);
-Type *eval_type_all(Token **ident);
+Type *eval_type_all();
 void type_test();
 
 int sizeof_parse(Type *type);
+int get_align(Type *type);
+int calc_aligned(int offset, Type *type);
 void globalstmt(GVar **ptr);
 Node *new_node(NodeKind kind, Node *lhs, Node *rhs, Type *type);
 Node *new_node_num(int val);

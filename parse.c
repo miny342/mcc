@@ -426,14 +426,23 @@ int calc(Node *node) {
 int sizeof_parse(Type *type) {
     if (!type)
         error_at(token->str, "type parse error");
-    if (type->ty == INT)
+    else if (type->ty == INT)
         return sizeof(int);
-    if (type->ty == PTR)
+    else if (type->ty == PTR)
         return sizeof(int*);
-    if (type->ty == ARRAY)
+    else if (type->ty == ARRAY)
         return type->array_size * sizeof_parse(type->ptr_to);
-    if (type->ty == CHAR || type->ty == VOID)
+    else if (type->ty == CHAR || type->ty == VOID || type->ty == FUNC)
         return sizeof(char);
+    else error_at(token->str, "不明な型のsizeof");
+}
+
+int get_align(Type *type) {
+    if (!type)
+        error_at(token->str, "type parse error");
+    else if (type->ty == ARRAY)
+        return get_align(type->ptr_to);
+    else sizeof_parse(type);
 }
 
 // 不完全な型を返す。bottomに、不完全な末端があるので埋めること
@@ -461,11 +470,14 @@ Type *eval_type_acc(Token **ident, Type **bottom) {
         expect(")");
     }
 
-    // identは飛ばすかアドレスに入れる
+    // identはアドレスに入れる
     if (ident && !*ident) {
         *ident = consume_ident();
     } else {
-        consume_ident();
+        Token *tok = consume_ident();
+        if (tok) {
+            error_at(tok->str, "トークンが存在します(コンパイラのバグ)");
+        }
     }
 
     // ()なら関数、[]なら配列 []は並べることができる
@@ -490,12 +502,9 @@ Type *eval_type_acc(Token **ident, Type **bottom) {
             if (!consume(")")) {
                 // 引数を読む
                 while(1) {
-                    Token *tk = NULL;
-                    *args = eval_type_all(&tk);
-                    if (tk) {
-                        fprintf(stderr, "drop token %.*s\n", tk->len, tk->str);
-                    }
+                    *args = eval_type_all();
                     btm_->arglen += 1;
+                    if ((*args)->ty == ARRAY) (*args)->ty = PTR; // 関数の引数ではint a[10]などはすべてポインタとする
                     if ((*args)->ty == VA_ARGS || !consume(",")) break;
                     args = &(*args)->args;
                 }
@@ -569,8 +578,8 @@ Type *eval_type_acc(Token **ident, Type **bottom) {
     return top;
 }
 
-// 完全な型を返す identは変数名など
-Type *eval_type_all(Token **ident) {
+// 完全な型を返す
+Type *eval_type_all() {
     Type *type = calloc(1, sizeof(Type));
     if(consumeTK(TK_INT)) {
         type->ty = INT;
@@ -583,8 +592,9 @@ Type *eval_type_all(Token **ident) {
     } else {
         error_at(token->str, "no int or char");
     }
+    Token *tok = NULL;
     Type *btm = NULL;
-    Type *top = eval_type_acc(ident, &btm);
+    Type *top = eval_type_acc(&tok, &btm);
     if (btm) {
         if (btm->ty == FUNC) {
             btm->ret = type;
@@ -594,130 +604,54 @@ Type *eval_type_all(Token **ident) {
             error_at(token->str, "unexpected error all btm, %d\n", btm->ty);
         }
     } else {
+        type->tok = tok;
         return type;
     }
+    top->tok = tok;
     return top;
 }
 
-Type *eval_type() {
-    Type *type = calloc(1, sizeof(Type));
-    if(consumeTK(TK_INT)) {
-        type->ty = INT;
-    } else if (consumeTK(TK_CHAR)) {
-        type->ty = CHAR;
-    } else if (consume("...")) {
-        type->ty = VA_ARGS;
-    } else if (consumeTK(TK_VOID)) {
-        type->ty = VOID;
-    } else {
-        error_at(token->str, "no int or char");
+int calc_aligned(int offset, Type *type) {
+    offset += sizeof_parse(type);
+    int align = get_align(type);
+    if (offset % align) {
+        offset += (align - offset % align);
     }
-    return type;
+    return offset;
 }
 
-LVar *assign_lvar(Type *type) {
-    int diffoffset = 8;
-    Type *tmp = NULL;
-    while(consume("*")) {
-        tmp = calloc(1, sizeof(Type));
-        tmp->ptr_to = type;
-        tmp->ty = PTR;
-        type = tmp;
+LVar *init_lvar(Type *type) {
+    if (type->ty == VA_ARGS) {
+        error_at(token->str, "assign lvarにva argsが入力されました(unimplemented)");
     }
-    Token *tok = consume_ident();
-    if(!tok) {
-        if (type->ty == VA_ARGS) {
-            LVar *lvar = calloc(1, sizeof(LVar));
-            lvar->type = type;
-            lvar->next = locals;
-            return lvar;
-        }
-        error_at(token->str, "non variable");
+    if (find_lvar(type->tok)) {
+        error_at(type->tok->str, "duplicate");
     }
-    LVar *lvar = find_lvar(tok);
-    if (lvar)
-        error_at(tok->str, "duplicate");
-    lvar = calloc(1, sizeof(LVar));
+
+    LVar *lvar = calloc(1, sizeof(LVar));
     lvar->next = locals;
-    lvar->name = tok->str;
-    lvar->len = tok->len;
-    if (consume("[")) {
-        Type *tmp;
-        tmp = type;
-        type = calloc(1, sizeof(Type));
-        type->ptr_to = tmp;
-        type->ty = ARRAY;
-        if (consume("]")) {
-            lvar->type = type;
-            lvar->offset = -1;
-            return lvar;
-        }
-
-        Node *node = logic_or();
-        expect("]");
-        type->array_size = calc(node);
-        diffoffset = sizeof_parse(type);
-    }
-
-    lvar->offset = locals->offset + diffoffset;
-    if (lvar->offset % 8 != 0) {
-        lvar->offset += (8 - lvar->offset % 8);
-    }
+    lvar->name = type->tok->str;
+    lvar->len = type->tok->len;
+    lvar->offset = calc_aligned((locals ? locals->offset : 0), type);
     lvar->type = type;
-    locals = lvar;
     return lvar;
 }
 
 void assign_lvar_arr(LVar *lvar, int len) {
     lvar->type->array_size = len;
-    lvar->offset = locals->offset + sizeof_parse(lvar->type);
-    if (lvar->offset % 8 != 0) {
-        lvar->offset += (8 - lvar->offset % 8);
-    }
-    locals = lvar;
+    lvar->offset = calc_aligned((locals ? locals->offset : 0), lvar->type);
 }
 
-GVar *init_gvar(Type *type) {
-    Type *tmp = NULL;
-    while(consume("*")) {
-        tmp = calloc(1, sizeof(Type));
-        tmp->ptr_to = type;
-        tmp->ty = PTR;
-        type = tmp;
+GVar *init_gvar(Type *type, Token *tok) {
+    if (find_gvar(tok)) {
+        error_at(token->str, "duplicate");
     }
-    Token *tok = consume_ident();
-    if(!tok) {
-        error_at(token->str, "non variable");
-    }
-    GVar *lvar = find_gvar(tok);
-    if (lvar)
-        error_at(tok->str, "duplicate");
-    lvar = calloc(1, sizeof(GVar));
-    lvar->name = tok->str;
-    lvar->len = tok->len;
-    if (consume("[")) {
-        Type *tmp = type;
-        type = calloc(1, sizeof(Type));
-        type->ptr_to = tmp;
-        type->ty = ARRAY;
-        if (consume("]")) {
-            lvar->type = type;
-            lvar->offset = -1;
-            return lvar;
-        }
-
-        Node *node = logic_or();
-        expect("]");
-        type->array_size = calc(node);
-    }
-    lvar->offset = sizeof_parse(type);
-    lvar->type = type;
-    return lvar;
-}
-
-void init_gvar_arr(GVar *gvar, int len) {
-    gvar->type->array_size = len;
-    gvar->offset = sizeof_parse(gvar->type);
+    GVar *gvar = calloc(1, sizeof(GVar));
+    gvar->name = tok->str;
+    gvar->len = tok->len;
+    gvar->type = type;
+    gvar->size = sizeof_parse(type);
+    return gvar;
 }
 
 Node *lvar_node(LVar *lvar) {
@@ -808,6 +742,9 @@ void show_type(Type *type, int indent) {
         fprintf(stderr, "%*sNULL\n", indent, "");
         return;
     }
+    if(type->tok) {
+        fprintf(stderr, "%*sname: %.*s\n", indent, "", type->tok->len, type->tok->str);
+    }
     fprintf(stderr, "%*sType: %s\n", indent, "", type_name_arr[type->ty]);
     if (type->ty == PTR) {
         show_type(type->ptr_to, indent + 2);
@@ -829,9 +766,7 @@ void type_test() {
     while(!at_eof()) {
         Token *ident = NULL;
         Type *type = eval_type_all(&ident);
-        fprintf(stderr, "ident: %.*s\n", ident->len, ident->str);
         show_type(type, 0);
-        fprintf(stderr, "\n");
         if (consume("{")) {
             int i = 1;
             while (1) {
@@ -858,71 +793,47 @@ void program() {
 }
 
 void globalstmt(GVar **ptr) {
-    Type *type = eval_type();
-    Type *ttmp;
-    while(consume("*")) {
-        ttmp = calloc(1, sizeof(Type));
-        ttmp->ptr_to = type;
-        ttmp->ty = PTR;
-        type = ttmp;
-    }
-    Token *prev = token;
-    Token *tok = consume_ident();
-    LVar *lvar, *tmp;
-    if(!tok) error("invalid token");
-    if (consume("(")) {
-        GVar *func = calloc(1, sizeof(GVar));
-        func->name = tok->str;
-        func->len = tok->len;
-        Type *ftype = calloc(1, sizeof(Type));
-        func->type = ftype;
-        ftype->ret = type;
-        ftype->ty = FUNC;
-        locals = calloc(1, sizeof(LVar));
-        int i = 0;
-        if (!consume(")")) {
-            while(1) {
-                type = eval_type();
-                lvar = assign_lvar(type);
-                if (type->ty == VA_ARGS) {
-                    break;
-                }
-                i++;
-                if(!consume(",")) break;
-            }
-            ftype->arglen = i;
-            // ftype->args = lvar;
-            tmp = locals;
-            for(lvar = locals; lvar; lvar = lvar->next) {
-                if (lvar->offset > 6 * 8) {
-                    lvar->offset = 5 * 8 - lvar->offset;
-                }
-                if (lvar->offset == -16){
-                    locals = lvar->next;
-                    lvar->next = NULL;
-                    for(lvar = locals; lvar->next; lvar = lvar->next);
-                    lvar->next = tmp;
-                    break;
-                }
-            }
-            expect(")");
-        }
-        tok = token;
-        *ptr = func;
+    Type *type = eval_type_all();
+    Token *tok = type->tok;
+    if (!type || !tok) error_at(token->str, "型が正しくありません");
+    GVar *gvar = init_gvar(type, tok);
+    if (type->ty == FUNC) {
         if (consume(";")) {
-            func->locals = locals;
+            *ptr = gvar;
             return;
-        } else if (consume("{")) {
-            token = tok;
-            func->node = calc_node(stmt());
-            func->locals = locals;
-            return;
-        } else {
-            error_at(token->str, "関数ではありません");
         }
+        locals = NULL;
+
+        Type *args = type->args;
+        while (args) {
+            if (args->ty == VA_ARGS) {
+                break;
+            }
+            LVar *lvar = init_lvar(args);
+            locals = lvar;
+            args = args->args;
+        }
+        LVar *tmp = locals;
+        LVar *lvar = locals;
+        for(int i = type->arglen; i > 6; i--) {
+            if (i > 6) {
+                lvar->offset = (5 - i) * 8;
+            }
+            if (i == 7) {
+                locals = lvar->next;
+                lvar->next = NULL;
+                for(lvar = locals; lvar->next; lvar = lvar->next);
+                lvar->next = tmp;
+                break;
+            }
+            lvar = lvar->next;
+        }
+        *ptr = gvar;
+        gvar->node = calc_node(stmt());
+        gvar->locals = locals;
+        return;
     } else {
-        token = prev;
-        GVar *gvar = init_gvar(type);
+        GVar *gvar = init_gvar(type, tok);
         if (consume("=")) {
             if (gvar->type->ty == ARRAY) {
                 int i = 0;
@@ -948,12 +859,13 @@ void globalstmt(GVar **ptr) {
                         }
                         expect("}");
                     }
-                    if (gvar->offset != -1) {
-                        if (i > gvar->type->array_size) {
+                    if (type->array_size != -1) {
+                        if (i > type->array_size) {
                             error_at(token->str, "引数が多すぎます");
                         }
                     } else {
-                        init_gvar_arr(gvar, i);
+                        type->array_size = i;
+                        gvar->size = sizeof_parse(type);
                     }
                     gvar->node = node;
                 } else if (token->kind == TK_STR) {
@@ -975,12 +887,13 @@ void globalstmt(GVar **ptr) {
                     now->lhs->kind = ND_NUM;
                     now->lhs->type = &char_type;
                     i++;
-                    if (gvar->offset != -1) {
-                        if (i > gvar->type->array_size) {
+                    if (type->array_size != -1) {
+                        if (i > type->array_size) {
                             error_at(token->str, "文字列が長すぎます");
                         }
                     } else {
-                        init_gvar_arr(gvar, i);
+                        type->array_size = i;
+                        gvar->size = sizeof_parse(type);
                     }
                     gvar->node = node;
                     token = token->next;
@@ -993,7 +906,7 @@ void globalstmt(GVar **ptr) {
                 gvar->node->kind = ND_BLOCK;
             }
         }
-        if (gvar->offset == -1) {
+        if (type->array_size == -1) {
             error_at(token->str, "配列の初期化ができません");
         }
         expect(";");
@@ -1064,8 +977,8 @@ Node *stmt() {
 // (int | char) indent ([number])? (= assign | )? | assign
 Node *expr() {
     if(token->kind == TK_INT || token->kind == TK_CHAR) {
-        Type *type = eval_type();
-        LVar *lvar = assign_lvar(type);
+        Type *type = eval_type_all();
+        LVar *lvar = init_lvar(type);
         Node *node = NULL;
         if (consume("=")) {
             if (lvar->type->ty == ARRAY) {
@@ -1088,7 +1001,7 @@ Node *expr() {
                             if (consume("}")) break;
                             expect(",");
                         }
-                        if (lvar->offset != -1) {
+                        if (lvar->type->array_size != -1) {
                             for(; i < lvar->type->array_size; i++) {
                                 node = block_node(assign_node(deref_node(add_node(ptr_node, new_node_num(i))), new_node_num(0)), node);
                             }
@@ -1099,7 +1012,7 @@ Node *expr() {
                             assign_lvar_arr(lvar, i);
                         }
                     } else {
-                        if (lvar->offset != -1) {
+                        if (lvar->type->array_size != -1) {
                             for(i = 0; i < lvar->type->array_size; i++) {
                                 node = block_node(assign_node(deref_node(add_node(ptr_node, new_node_num(i))), new_node_num(0)), node);
                             }
@@ -1113,7 +1026,7 @@ Node *expr() {
                         node = block_node(assign_node(deref_node(add_node(ptr_node, new_node_num(i++))), new_node_num(*(p++))), node);
                     }
                     node = block_node(assign_node(deref_node(add_node(ptr_node, new_node_num(i++))), new_node_num(0)), node);
-                    if (lvar->offset != -1) {
+                    if (lvar->type->array_size != -1) {
                         for (; i < lvar->type->array_size; i++) {
                             node = block_node(assign_node(deref_node(add_node(ptr_node, new_node_num(i))), new_node_num(0)), node);
                         }
@@ -1131,6 +1044,10 @@ Node *expr() {
                 node = new_node(ND_ASSIGN, lvar_node(lvar), assign(), lvar->type);
             }
         }
+        if (type->array_size == -1) {
+            error_at(token->str, "配列の初期化ができません");
+        }
+        locals = lvar;
         return new_node(ND_DECLARATION, node, NULL, NULL);
     }
     return assign();

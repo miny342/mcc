@@ -56,7 +56,7 @@ int main(int argc, char **argv){
     // トークナイズする
     token = tokenize(user_input);
 
-    type_test();
+    // type_test();
 
     program();
 

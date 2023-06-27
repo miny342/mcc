@@ -1,6 +1,36 @@
 #include "mcc.h"
 #define min(x, y) ((x) <= (y) ? (x) : (y))
 
+char *byte_reg[] = {"dil", "sil", "dl", "cl", "r8b", "r9b"};
+char *dword_reg[] = {"edi", "esi", "edx", "ecx", "r8d", "r9d"};
+char *qword_reg[] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
+
+char *ptr_name(int size) {
+    switch (size) {
+        case 1:
+            return "byte ptr";
+        case 4:
+            return "dword ptr";
+        case 8:
+            return "qword ptr";
+        default:
+            error("ptr_name is not implemented %d\n", size);
+    }
+}
+
+char **regs(int size) {
+    switch (size) {
+        case 1:
+            return byte_reg;
+        case 4:
+            return dword_reg;
+        case 8:
+            return qword_reg;
+        default:
+            error("regs is not implemented %d\n", size);
+    }
+}
+
 void gen_global() {
     // アセンブリの前半部分を出力
     printf(".intel_syntax noprefix\n");
@@ -18,33 +48,18 @@ void gen_global() {
             printf("  push rbp\n");
             printf("  mov rbp, rsp\n");
 
-            for(int i = 0; i < type->arglen; i++) {
-                switch (i) {
-                    case 0:
-                        printf("  push rdi\n");
-                        break;
-                    case 1:
-                        printf("  push rsi\n");
-                        break;
-                    case 2:
-                        printf("  push rdx\n");
-                        break;
-                    case 3:
-                        printf("  push rcx\n");
-                        break;
-                    case 4:
-                        printf("  push r8\n");
-                        break;
-                    case 5:
-                        printf("  push r9\n");
-                        break;
-                }
+            if (code->locals) {
+                int sub = (code->locals->offset) + (8 - code->locals->offset % 8) % 8;
+                printf("  sub rsp, %d\n", sub);
             }
 
-            int sub = (code->locals->offset - min(type->arglen, 6) * 8) + (16 - code->locals->offset % 16) % 16;
-
-            if (sub > 0) {
-                printf("  sub rsp, %d\n", sub);
+            Type *args = type->args;
+            int offset = 0;
+            for(int i = 0; i < 6 && i < type->arglen; i++) {
+                int size = sizeof_parse(args);
+                offset = calc_aligned(offset, args);
+                printf("  mov %s [rbp-%d], %s\n", ptr_name(size), offset, regs(size)[i]);
+                args = args->args;
             }
 
             gen(code->node);
@@ -63,7 +78,7 @@ void gen_global() {
     printf(".data\n");
     for(; data; data = data->next) {
         printf("%.*s:\n", data->len, data->name);
-        int size = data->offset - gen_gvar(data->node);
+        int size = data->size - gen_gvar(data->node);
         if (size > 0) {
             printf("  .zero %d\n", size);
         }
