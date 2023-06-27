@@ -93,6 +93,7 @@ struct LVar {
 };
 
 extern LVar *locals;
+extern int max_offset;
 
 typedef struct GVar GVar;
 
@@ -105,6 +106,7 @@ struct GVar {
     Type *type;
     Node *node; // GVarの初期値またはtype==funcの時の実行ノード
     LVar *locals; // type == func
+    int offset;  // type == func
 };
 
 extern GVar *code;

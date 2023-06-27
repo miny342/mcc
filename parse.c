@@ -785,10 +785,14 @@ void type_test() {
 
 void program() {
     GVar **tmp = &code;
+    while(consume(";"));
     globalstmt(tmp);
+    while(consume(";"));
+
     while(!at_eof()) {
         tmp = &(*tmp)->next;
         globalstmt(tmp);
+        while(consume(";"));
     }
 }
 
@@ -803,6 +807,7 @@ void globalstmt(GVar **ptr) {
             return;
         }
         locals = NULL;
+        max_offset = 0;
 
         Type *args = type->args;
         while (args) {
@@ -829,8 +834,12 @@ void globalstmt(GVar **ptr) {
             lvar = lvar->next;
         }
         *ptr = gvar;
+        if (*token->str != '{') {
+            error_at(token->str, "{ ではありません");
+        }
         gvar->node = calc_node(stmt());
         gvar->locals = locals;
+        gvar->offset = max_offset;
         return;
     } else {
         GVar *gvar = init_gvar(type, tok);
@@ -916,17 +925,17 @@ void globalstmt(GVar **ptr) {
 }
 
 Node *stmt() {
-    Node *node;
+    Node *node = NULL;
     if(consumeTK(TK_RETURN)) {
         node = calloc(1, sizeof(Node));
         node->kind = ND_RETURN;
-        node->lhs = expr();
+        node->lhs = assign();
         expect(";");
     } else if (consumeTK(TK_IF)) {
         node = calloc(1, sizeof(Node));
         node->kind = ND_IF;
         expect("(");
-        node->lhs = expr();
+        node->lhs = assign();
         expect(")");
         node->rhs = stmt();
         if (consumeTK(TK_ELSE))
@@ -935,10 +944,11 @@ Node *stmt() {
         node = calloc(1, sizeof(Node));
         node->kind = ND_WHILE;
         expect("(");
-        node->lhs = expr();
+        node->lhs = assign();
         expect(")");
         node->rhs = stmt();
     } else if (consumeTK(TK_FOR)) {
+        LVar *now_locals = locals;
         node = new_node(ND_FOR, NULL, new_node(ND_FOR, NULL, new_node(ND_FOR, NULL, NULL, NULL), NULL), NULL);
         expect("(");
         if(!consume(";")) {
@@ -946,27 +956,38 @@ Node *stmt() {
             expect(";");
         }
         if(!consume(";")) {
-            node->rhs->lhs = expr();
+            node->rhs->lhs = assign();
             expect(";");
         } else {
             node->rhs->lhs = new_node_num(1);
         }
         if(!consume(")")) {
-            node->rhs->rhs->lhs = expr();
+            node->rhs->rhs->lhs = assign();
             expect(")");
         }
         node->rhs->rhs->rhs = stmt();
+        if (locals && (locals->offset > max_offset)) {
+            max_offset = locals->offset;
+        }
+        locals = now_locals;
     } else if (consume("{")) {
         node = block_node(NULL, NULL);
+        LVar *now_locals = locals;
         while(!consume("}")) {
             node = block_node(stmt(), node);
         }
+        if (locals && (locals->offset > max_offset)) {
+            max_offset = locals->offset;
+        }
+        locals = now_locals;
     } else if(consumeTK(TK_BREAK)) {
         node = new_node(ND_BREAK, NULL, NULL, NULL);
         expect(";");
     } else if(consumeTK(TK_CONTINUE)) {
         node = new_node(ND_CONTINUE, NULL, NULL, NULL);
         expect(";");
+    } else if (consume(";")) {
+        return node;
     } else {
         node = expr();
         expect(";");
@@ -1310,7 +1331,6 @@ Node *unary() {
         return new_node(ND_NEG, node, NULL, node->type);
     }
     if (consume("*")) {
-        if (consume("&")) return unary();
         node = unary();
         if (node->type->ty != PTR)
             error_at(token->str, "this is not ptr");
@@ -1320,7 +1340,6 @@ Node *unary() {
     }
     if (consume("&")) {
         if (consume("&")) error_at(token->str, "&& is not usable");
-        if (consume("*")) return unary();
         node = unary();
         if (node->lvar != NULL && node->lvar->type->ty == ARRAY) {
             node->lvar = NULL;

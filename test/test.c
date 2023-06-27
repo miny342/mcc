@@ -275,6 +275,19 @@ assert(t56, {
     printf("%p\n", p);
     return p(2, 4, 6, 8, 10, 12, 14, 16, 18, 20);
 }, 110)
+assert(t57, {
+    int *p;
+    int *q;
+    {
+        int i;
+        i = 1;
+        p = &i;
+    }
+    // i は使えない
+    for(int i = 0; i < 1; i++) q = &i;
+    // 同様
+    return p == q; // 内部的にはアドレスが同じになっている
+}, 1);
 
 
 int a = 1;

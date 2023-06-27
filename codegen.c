@@ -48,10 +48,9 @@ void gen_global() {
             printf("  push rbp\n");
             printf("  mov rbp, rsp\n");
 
-            if (code->locals) {
-                int sub = (code->locals->offset) + (8 - code->locals->offset % 8) % 8;
+            int sub = (code->offset) + (8 - code->offset % 8) % 8;
+            if (sub > 0)
                 printf("  sub rsp, %d\n", sub);
-            }
 
             Type *args = type->args;
             int offset = 0;

@@ -5,6 +5,7 @@ char *user_input;
 char *filename;
 GVar *code;
 LVar *locals;
+int max_offset;
 String *strs;
 int labelcnt = 2;
 int continue_label = 0;
