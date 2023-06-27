@@ -192,7 +192,7 @@ assert(t33, {
         sb[i] = inv ^ rotl(inv, 1) ^ rotl(inv, 2) ^ rotl(inv, 3) ^ rotl(inv, 4) ^ 99;
     }
     return sb[134];
-}, 68)
+}, 68)  // unsigned char型とみているので問題が出ない
 assert(t34, {
     int mod;
     mod = 1000000007;
@@ -210,7 +210,7 @@ assert(t34, {
         n = n >> 1;
     }
     return r;
-}, 688423210)
+}, 688423210) // 裏ではすべて64bitレジスタで計算するため、オーバーフローしない
 assert(t35, {return 6 && 8;}, 1)
 assert(t36, {return 0 && 2;}, 0)
 assert(t37, {return 3 && 0;}, 0)
@@ -270,6 +270,12 @@ int _t55(int a, int b, int c, int d, int e, int f, int g, int h, int i, int j) {
     return a + b + c + d + e + f + g + h + i + j;
 }
 assert(t55, {return _t55(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);}, 55)
+assert(t56, {
+    int (*p)(int, int, int, int, int, int, int, int, int, int) = _t55;
+    printf("%p\n", p);
+    return p(2, 4, 6, 8, 10, 12, 14, 16, 18, 20);
+}, 110)
+
 
 int a = 1;
 int *d[10] = { &a + 1, &a + 2 };
@@ -285,7 +291,7 @@ int main() {
     t21();t23();t24();t25();t26();t27();t28();t29();t30();
     t31();t32();t33();t34();t35();t36();t37();t38();t39();t40();
     t41();t42();t43();t44();t45();t46();t47();t48();t49();t50();
-    t51();t52();t53();t54();t55();
+    t51();t52();t53();t54();t55();t56();
 
     printf("OK\n");
 }

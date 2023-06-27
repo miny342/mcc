@@ -208,8 +208,9 @@ void gen_call(Node *node) {
 
     int stack;
 
+    gen_callstack(node->rhs, 0);
+
     if (node->lhs->kind == ND_GLOVAL_LVAR) {
-        gen_callstack(node->rhs, 0);
         stack = gen_callregister(node->rhs, 0);
         printf("  xor rax, rax\n");
         printf("  call %.*s\n", node->lhs->gvar->len, node->lhs->gvar->name);
@@ -217,7 +218,14 @@ void gen_call(Node *node) {
             printf("  add rsp, %d\n", stack * 8);
         }
     } else {
-        error("unimplemented: call ptr");
+        gen(node->lhs);
+        stack = gen_callregister(node->rhs, 0);
+        printf("  mov r10, rax\n");
+        printf("  xor rax, rax\n");
+        printf("  call r10\n");
+        if (stack > 0) {
+            printf("  add rsp, %d\n", stack * 8);
+        }
     }
 }
 
@@ -345,6 +353,9 @@ void gen(Node *node) {
             return;
         case ND_GLOVAL_LVAR:
             gen_lval(node);
+            if (node->type->ty == FUNC) {
+                return;
+            }
             size = sizeof_parse(node->gvar->type);
             if (size == 4) {
                 printf("  movsx rax, dword ptr [rax]\n");

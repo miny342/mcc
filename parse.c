@@ -1314,6 +1314,8 @@ Node *unary() {
         node = unary();
         if (node->type->ty != PTR)
             error_at(token->str, "this is not ptr");
+        if (node->type->ptr_to->ty == FUNC)
+            return node;
         return new_node(ND_DEREF, node, NULL, node->type->ptr_to);
     }
     if (consume("&")) {
