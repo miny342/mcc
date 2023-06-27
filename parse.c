@@ -578,8 +578,8 @@ Type *eval_type_acc(Token **ident, Type **bottom) {
     return top;
 }
 
-// 完全な型を返す
-Type *eval_type_all() {
+// 先頭のトークンを呼んで、その型を返すかエラー
+Type *eval_type_top() {
     Type *type = calloc(1, sizeof(Type));
     if(consumeTK(TK_INT)) {
         type->ty = INT;
@@ -592,6 +592,10 @@ Type *eval_type_all() {
     } else {
         error_at(token->str, "no int or char");
     }
+}
+
+// 先頭の型(int, char, etc...)を受け取り、残りの型を処理する
+Type *eval_type_ident(Type *type) {
     Token *tok = NULL;
     Type *btm = NULL;
     Type *top = eval_type_acc(&tok, &btm);
@@ -609,6 +613,12 @@ Type *eval_type_all() {
     }
     top->tok = tok;
     return top;
+}
+
+// 完全な型を返す
+Type *eval_type_all() {
+    Type *type = eval_type_top();
+    return eval_type_ident(type);
 }
 
 int calc_aligned(int offset, Type *type) {
