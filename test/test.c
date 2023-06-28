@@ -296,7 +296,7 @@ int *b = &a;
 char k[] = "anna";
 char kl[10] = "and";
 char *p = "pic";
-
+int (*ffn)() = t0_assert + 1;
 
 int main() {
     t0();t1();t2();t3();t4();t5();t6();t7();t8();t9();t10();

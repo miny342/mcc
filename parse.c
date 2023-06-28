@@ -1355,6 +1355,9 @@ Node *unary() {
             node->lvar = NULL;
             return node;
         }
+        if (node->gvar && node->gvar->type->ty == PTR && node->gvar->type->ptr_to->ty == FUNC) {
+            return node;
+        }
         tmp = calloc(1, sizeof(Type));
         tmp->ptr_to = node->type;
         tmp->ty = PTR;
@@ -1392,15 +1395,14 @@ Node *unary() {
             node = deref_node(add_node(node, n));
             expect("]");
         } else if (consume("(")) {
-            if (node->type->ty != FUNC && !(node->type->ty == PTR && node->type->ptr_to->ty == FUNC)) {
+            if (node->type->ty != PTR || node->type->ptr_to->ty != FUNC) {
                 error_at(token->str, "関数ではありません");
             }
             Node *n = calloc(1, sizeof(Node));
             n->kind = ND_CALL;
-            if (node->type->ty == PTR) {
-                n->type = node->type->ptr_to->ret;
-            } else {
-                n->type = node->type->ret;
+            n->type = node->type->ptr_to->ret;
+            if (node->lhs && node->lhs->kind == ND_GLOVAL_LVAR) {
+                node = node->lhs; // deref
             }
             n->lhs = node;
             Node *now_node = calloc(1, sizeof(Node));
@@ -1472,6 +1474,13 @@ Node *primary() {
                     Node *res = new_node(ND_ADDR, node, NULL, node->type);
                     res->gvar = node->gvar;
                     return res;
+                } else if (gvar->type->ty == FUNC) { // 関数はアドレスをとる
+                    fprintf(stderr, "call %.*s\n", gvar->len, gvar->name);
+                    node->type = gvar->type;
+                    Type *tmp = calloc(1, sizeof(Type));
+                    tmp->ty = PTR;
+                    tmp->ptr_to = gvar->type;
+                    return new_node(ND_ADDR, node, NULL, tmp);
                 } else {
                     node->type = gvar->type;
                 }

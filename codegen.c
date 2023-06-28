@@ -352,9 +352,6 @@ void gen(Node *node) {
             return;
         case ND_GLOVAL_LVAR:
             gen_lval(node);
-            if (node->type->ty == FUNC) {
-                return;
-            }
             size = sizeof_parse(node->gvar->type);
             if (size == 4) {
                 printf("  movsx rax, dword ptr [rax]\n");
