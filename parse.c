@@ -578,20 +578,23 @@ Type *eval_type_acc(Token **ident, Type **bottom) {
     return top;
 }
 
-// 先頭のトークンを呼んで、その型を返すかエラー
+// 先頭のトークンを呼んで、その型を返すかNULL
 Type *eval_type_top() {
-    Type *type = calloc(1, sizeof(Type));
+    Type *type = NULL;
     if(consumeTK(TK_INT)) {
+        type = calloc(1, sizeof(Type));
         type->ty = INT;
     } else if (consumeTK(TK_CHAR)) {
+        type = calloc(1, sizeof(Type));
         type->ty = CHAR;
     } else if (consume("...")) {
+        type = calloc(1, sizeof(Type));
         type->ty = VA_ARGS;
     } else if (consumeTK(TK_VOID)) {
+        type = calloc(1, sizeof(Type));
         type->ty = VOID;
-    } else {
-        error_at(token->str, "no int or char");
     }
+    return type;
 }
 
 // 先頭の型(int, char, etc...)を受け取り、残りの型を処理する
@@ -618,7 +621,10 @@ Type *eval_type_ident(Type *type) {
 // 完全な型を返す
 Type *eval_type_all() {
     Type *type = eval_type_top();
-    return eval_type_ident(type);
+    if (type)
+        return eval_type_ident(type);
+    else
+        return NULL;
 }
 
 int calc_aligned(int offset, Type *type) {
@@ -668,16 +674,7 @@ Node *lvar_node(LVar *lvar) {
     Node *node = calloc(1, sizeof(Node));
     node->kind = ND_LVAR;
     node->lvar = lvar;
-    if (lvar->type->ty == ARRAY) {
-        node->type = calloc(1, sizeof(Type));
-        node->type->ty = PTR;
-        node->type->ptr_to = lvar->type->ptr_to;
-        Node *res = new_node(ND_ADDR, node, NULL, node->type);
-        res->lvar = node->lvar;
-        return res;
-    } else {
-        node->type = lvar->type;
-    }
+    node->type = lvar->type;
     return node;
 }
 
@@ -698,40 +695,56 @@ Node *new_node_num(int val) {
     return node;
 }
 
+int is_ptr_or_array(Node *node) {
+    return node->type->ty == PTR || node->type->ty == ARRAY;
+}
+
 Node *add_node(Node *lhs, Node *rhs) {
-    if (lhs->type->ty == PTR && rhs->type->ty == PTR) {
+    if (is_ptr_or_array(lhs) && is_ptr_or_array(rhs)) {
         error_at(token->str, "ptr + ptrはできません");
     }
-    if (lhs->type->ty == PTR) {
-        return new_node(ND_ADD, lhs, new_node(ND_MUL, rhs, new_node_num(sizeof_parse(lhs->type->ptr_to)), NULL), lhs->type);
+    if (is_ptr_or_array(lhs)) {
+        Type *type = calloc(1, sizeof(Type));
+        type->ty = PTR;
+        type->ptr_to = lhs->type->ptr_to;
+        return new_node(ND_ADD, lhs, new_node(ND_MUL, rhs, new_node_num(sizeof_parse(lhs->type->ptr_to)), NULL), type);
     }
-    if (rhs->type->ty == PTR) {
-        return new_node(ND_ADD, rhs, new_node(ND_MUL, lhs, new_node_num(sizeof_parse(rhs->type->ptr_to)), NULL), rhs->type);
+    if (is_ptr_or_array(rhs)) {
+        Type *type = calloc(1, sizeof(Type));
+        type->ty = PTR;
+        type->ptr_to = rhs->type->ptr_to;
+        return new_node(ND_ADD, rhs, new_node(ND_MUL, lhs, new_node_num(sizeof_parse(rhs->type->ptr_to)), NULL), type);
     }
     return new_node(ND_ADD, lhs, rhs, lhs->type);
 }
 
 Node *sub_node(Node *lhs, Node *rhs) {
-    if(lhs->type->ty == PTR && rhs->type->ty == PTR) {
+    if(is_ptr_or_array(lhs) && is_ptr_or_array(rhs)) {
         return new_node(ND_SUB, lhs, rhs, &int_type);
     }
-    if(lhs->type->ty == PTR) {
-        return new_node(ND_SUB, lhs, new_node(ND_MUL, new_node_num(sizeof_parse(lhs->type->ptr_to)), rhs, NULL), lhs->type);
+    if(is_ptr_or_array(lhs)) {
+        Type* type = calloc(1, sizeof(Type));
+        type->ty = PTR;
+        type->ptr_to = lhs->type->ptr_to;
+        return new_node(ND_SUB, lhs, new_node(ND_MUL, new_node_num(sizeof_parse(lhs->type->ptr_to)), rhs, NULL), type);
     }
-    if(rhs->type->ty == PTR) {
+    if(is_ptr_or_array(rhs)) {
         error_at(token->str, "int - ptrは未定義です");
     }
     return new_node(ND_SUB, lhs, rhs, &int_type);
 }
 
 Node *deref_node(Node *n) {
-    if (n->type->ty != PTR) {
+    if (!is_ptr_or_array(n)) {
         error_at(token->str, "derefできません");
     }
     return new_node(ND_DEREF, n, NULL, n->type->ptr_to);
 }
 
 Node *assign_node(Node *lhs, Node *rhs) {
+    if (lhs->kind != ND_LVAR && lhs->kind != ND_DEREF && lhs->kind != ND_GVAR) {
+        error_at(token->str, "左辺に代入できません");
+    }
     return new_node(ND_ASSIGN, lhs, rhs, lhs->type);
 }
 
@@ -1007,8 +1020,9 @@ Node *stmt() {
 
 // (int | char) indent ([number])? (= assign | )? | assign
 Node *expr() {
-    if(token->kind == TK_INT || token->kind == TK_CHAR) {
-        Type *type = eval_type_all();
+    Type *type = eval_type_all();
+    if(type) {
+        show_type(type, 0);
         LVar *lvar = init_lvar(type);
         Node *node = NULL;
         if (consume("=")) {
@@ -1102,56 +1116,56 @@ Node *assign() {
     }
     if(consume("*=")) {
         Node *right = assign();
-        if (node->type->ty == PTR || right->type->ty == PTR) {
+        if (is_ptr_or_array(node) || is_ptr_or_array(right)) {
             error_at(token->str, "ポインタの掛け算は未定義です");
         }
         return assign_node(node, new_node(ND_MUL, node, right, &int_type));
     }
     if(consume("/=")) {
         Node *right = assign();
-        if (node->type->ty == PTR || right->type->ty == PTR) {
+        if (is_ptr_or_array(node) || is_ptr_or_array(right)) {
             error_at(token->str, "ポインタの割り算は未定義です");
         }
         return assign_node(node, new_node(ND_DIV, node, right, &int_type));
     }
     if(consume("%=")) {
         Node *right = assign();
-        if (node->type->ty == PTR || right->type->ty == PTR) {
+        if (is_ptr_or_array(node) || is_ptr_or_array(right)) {
             error_at(token->str, "ポインタの余剰は未定義です");
         }
         return assign_node(node, new_node(ND_REMINDER, node, right, &int_type));
     }
     if(consume("<<=")) {
         Node *right = assign();
-        if (node->type->ty == PTR || right->type->ty == PTR) {
+        if (is_ptr_or_array(node) || is_ptr_or_array(right)) {
             error_at(token->str, "ポインタのシフト計算は未定義です");
         }
         return assign_node(node, new_node(ND_LSHIFT, node, right, &int_type));
     }
     if(consume(">>=")) {
         Node *right = assign();
-        if (node->type->ty == PTR || right->type->ty == PTR) {
+        if (is_ptr_or_array(node) || is_ptr_or_array(right)) {
             error_at(token->str, "ポインタのシフト計算は未定義です");
         }
         return assign_node(node, new_node(ND_RSHIFT, node, right, &int_type));
     }
     if(consume("&=")) {
         Node *right = assign();
-        if (node->type->ty == PTR || right->type->ty == PTR) {
+        if (is_ptr_or_array(node) || is_ptr_or_array(right)) {
             error_at(token->str, "ポインタのAND計算は未定義です");
         }
         return assign_node(node, new_node(ND_BITAND, node, right, &int_type));
     }
     if(consume("|=")) {
         Node *right = assign();
-        if (node->type->ty == PTR || right->type->ty == PTR) {
+        if (is_ptr_or_array(node) || is_ptr_or_array(right)) {
             error_at(token->str, "ポインタのOR計算は未定義です");
         }
         return assign_node(node, new_node(ND_BITOR, node, right, &int_type));
     }
     if(consume("^=")) {
         Node *right = assign();
-        if (node->type->ty == PTR || right->type->ty == PTR) {
+        if (is_ptr_or_array(node) || is_ptr_or_array(right)) {
             error_at(token->str, "ポインタのXOR計算は未定義です");
         }
         return assign_node(node, new_node(ND_BITXOR, node, right, &int_type));
@@ -1307,19 +1321,19 @@ Node *mul() {
     for(;;) {
         if (consume("*")) {
             right = unary();
-            if (node->type->ty == PTR || right->type->ty == PTR)
+            if (is_ptr_or_array(node) || is_ptr_or_array(right))
                 error_at(token->str, "ptr * ptr is not defined");
             node = new_node(ND_MUL, node, right, &int_type);
         }
         else if (consume("/")) {
             right = unary();
-            if (node->type->ty == PTR || right->type->ty == PTR)
+            if (is_ptr_or_array(node) || is_ptr_or_array(right))
                 error_at(token->str, "ptr / ptr is not defined");
             node = new_node(ND_DIV, node, right, &int_type);
         }
         else if (consume("%")) {
             right = unary();
-            if (node->type->ty == PTR || right->type->ty == PTR)
+            if (is_ptr_or_array(node) || is_ptr_or_array(right))
                 error_at(token->str, "ptr %% ptr is not defined");
             node = new_node(ND_REMINDER, node, right, &int_type);
         }
@@ -1336,13 +1350,13 @@ Node *unary() {
         return unary();
     if (consume("-")) {
         node = unary();
-        if (node->type->ty == PTR)
+        if (is_ptr_or_array(node))
             error_at(token->str, "-ptr is not defined");
         return new_node(ND_NEG, node, NULL, node->type);
     }
     if (consume("*")) {
         node = unary();
-        if (node->type->ty != PTR)
+        if (!is_ptr_or_array(node))
             error_at(token->str, "this is not ptr");
         if (node->type->ptr_to->ty == FUNC)
             return node;
@@ -1351,10 +1365,6 @@ Node *unary() {
     if (consume("&")) {
         if (consume("&")) error_at(token->str, "&& is not usable");
         node = unary();
-        if (node->lvar != NULL && node->lvar->type->ty == ARRAY) {
-            node->lvar = NULL;
-            return node;
-        }
         if (node->gvar && node->gvar->type->ty == PTR && node->gvar->type->ptr_to->ty == FUNC) {
             return node;
         }
@@ -1364,12 +1374,21 @@ Node *unary() {
         return new_node(ND_ADDR, node, NULL, tmp);
     }
     if (consumeTK(TK_SIZEOF)) {
-        node = unary();
-        if (node->lvar == NULL) {
-            return new_node_num(sizeof_parse(node->type));
-        } else {
-            return new_node_num(sizeof_parse(node->lvar->type));
+        Type *ty;
+        if(*token->str == '(') {
+            Token *tok = token;
+            token = token->next;
+            ty = eval_type_all();
+            if (ty) {
+                Node *n;
+                n = new_node_num(sizeof_parse(ty));
+                expect(")");
+                return n;
+            }
+            token = tok;
         }
+        node = unary();
+        return new_node_num(sizeof_parse(node->type));
     }
     if (consume("++")) {
         node = unary();
@@ -1401,7 +1420,7 @@ Node *unary() {
             Node *n = calloc(1, sizeof(Node));
             n->kind = ND_CALL;
             n->type = node->type->ptr_to->ret;
-            if (node->lhs && node->lhs->kind == ND_GLOVAL_LVAR) {
+            if (node->lhs && node->lhs->kind == ND_GVAR) {
                 node = node->lhs; // deref
             }
             n->lhs = node;
@@ -1465,24 +1484,15 @@ Node *primary() {
             GVar *gvar = find_gvar(tok);
             if (gvar) {
                 Node *node = calloc(1, sizeof(Node));
-                node->kind = ND_GLOVAL_LVAR;
+                node->kind = ND_GVAR;
                 node->gvar = gvar;
-                if (gvar->type->ty == ARRAY) {
-                    node->type = calloc(1, sizeof(Type));
-                    node->type->ty = PTR;
-                    node->type->ptr_to = gvar->type->ptr_to;
-                    Node *res = new_node(ND_ADDR, node, NULL, node->type);
-                    res->gvar = node->gvar;
-                    return res;
-                } else if (gvar->type->ty == FUNC) { // 関数はアドレスをとる
+                node->type = gvar->type;
+                if (gvar->type->ty == FUNC) { // 関数はアドレスをとる
                     fprintf(stderr, "call %.*s\n", gvar->len, gvar->name);
-                    node->type = gvar->type;
                     Type *tmp = calloc(1, sizeof(Type));
                     tmp->ty = PTR;
                     tmp->ptr_to = gvar->type;
                     return new_node(ND_ADDR, node, NULL, tmp);
-                } else {
-                    node->type = gvar->type;
                 }
                 return node;
             }

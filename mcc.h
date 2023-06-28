@@ -141,7 +141,7 @@ typedef enum {
     ND_CALL,  // call function
     ND_ADDR,  // address
     ND_DEREF,  // デリファレンス
-    ND_GLOVAL_LVAR, // グローバル変数
+    ND_GVAR, // グローバル変数
     ND_STR, // 文字列
     ND_REMINDER, // %
     ND_LSHIFT, // <<
@@ -170,7 +170,7 @@ struct Node {
     int val;       // kind == ND_NUM
     LVar *lvar;    // kind == ND_LVAR
     String *s;     // kind == ND_STR
-    GVar *gvar;    // kind == ND_GLOVAL_LVAR
+    GVar *gvar;    // kind == ND_GVAR
 };
 
 Type *eval_type_acc(Token **ident, Type **bottom);

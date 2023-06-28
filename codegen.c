@@ -146,7 +146,7 @@ void gen_lval(Node *node) {
         gen(node->lhs);
         return;
     }
-    if (node->kind == ND_GLOVAL_LVAR) {
+    if (node->kind == ND_GVAR) {
         printf("  lea rax, %.*s[rip]\n", node->gvar->len, node->gvar->name);
         return;
     }
@@ -209,7 +209,7 @@ void gen_call(Node *node) {
 
     gen_callstack(node->rhs, 0);
 
-    if (node->lhs->kind == ND_GLOVAL_LVAR) {
+    if (node->lhs->kind == ND_GVAR) {
         stack = gen_callregister(node->rhs, 0);
         printf("  xor rax, rax\n");
         printf("  call %.*s\n", node->lhs->gvar->len, node->lhs->gvar->name);
@@ -245,6 +245,9 @@ void gen(Node *node) {
             return;
         case ND_LVAR:
             gen_lval(node);
+            if (node->type->ty == ARRAY) {
+                return;
+            }
             size = sizeof_parse(node->lvar->type);
             if (size == 4) {
                 printf("  movsx rax, dword ptr [rax]\n");
@@ -341,6 +344,9 @@ void gen(Node *node) {
             return;
         case ND_DEREF:
             gen(node->lhs);
+            if (node->type->ty == ARRAY) {
+                return;
+            }
             size = sizeof_parse(node->lhs->type->ptr_to);
             if (size == 4) {
                 printf("  movsx rax, dword ptr [rax]\n");
@@ -350,8 +356,11 @@ void gen(Node *node) {
                 printf("  mov rax, qword ptr [rax]\n");
             }
             return;
-        case ND_GLOVAL_LVAR:
+        case ND_GVAR:
             gen_lval(node);
+            if (node->type->ty == ARRAY) {
+                return;
+            }
             size = sizeof_parse(node->gvar->type);
             if (size == 4) {
                 printf("  movsx rax, dword ptr [rax]\n");
