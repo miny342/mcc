@@ -164,16 +164,12 @@ void gen_callstack(Node *node, int num) {
         gen_callstack(node->rhs, num + 1);
         gen(node->lhs);
         printf("  push rax\n");
-    } else if (num > 6 && num % 2 == 1)
-        printf("  sub rsp, 8\n");
+    }
 }
 
 int gen_callregister(Node *node, int num) {
     if (!(node->rhs)) {
         if(num > 6) {
-            if (num % 2 == 1) {
-                return num - 5;
-            }
             return num - 6;
         }
         return 0;

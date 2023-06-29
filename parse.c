@@ -666,7 +666,6 @@ Type *eval_type_top() {
         Token *tok = consume_ident();
         if (tok) {
             type = strmapget(structmap, tok->str, tok->len);
-            show_type(type, 0);
             if (type != NULL) {
                 if (consume("{")) {
                     def_struct(type);
@@ -682,7 +681,6 @@ Type *eval_type_top() {
         if (tok) {
             strmapset(structmap, tok->str, tok->len, type);
         }
-        show_type(type, 0);
     }
     return type;
 }
@@ -880,6 +878,10 @@ void show_type(Type *type, int indent) {
                 show_type(type->fields->data[i], indent + 4);
             }
         }
+    }
+
+    if (!indent) {
+        fprintf(stderr, "\n");
     }
 }
 
@@ -1560,7 +1562,6 @@ Node *unary() {
         } else if (consume("--")) {
             node = new_node(ND_DECR, NULL, node, node->type);
         } else if (consume(".")) {
-            fprintf(stderr, "try\n");
             if (node->type->ty != STRUCT) {
                 error_at(token->str, ".は未定義です");
             }
@@ -1575,7 +1576,7 @@ Node *unary() {
                     Type *t = calloc(1, sizeof(Type));
                     t->ptr_to = ty;
                     t->ty = PTR;
-                    node = new_node(ND_ADDR, node, NULL, NULL);
+                    node = new_node(ND_ADDR, node, NULL, t);
                     node = new_node(ND_ADD, node, new_node_num(ty->offset), t);
                     node = deref_node(node);
                     break;
@@ -1654,7 +1655,6 @@ Node *primary() {
                 node->gvar = gvar;
                 node->type = gvar->type;
                 if (gvar->type->ty == FUNC) { // 関数はアドレスをとる
-                    fprintf(stderr, "call %.*s\n", gvar->len, gvar->name);
                     Type *tmp = calloc(1, sizeof(Type));
                     tmp->ty = PTR;
                     tmp->ptr_to = gvar->type;

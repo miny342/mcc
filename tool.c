@@ -18,7 +18,6 @@ void *strmapget(StrMap *map, char *str, int len) {
 }
 
 int strmapset(StrMap *map, char *str, int len, void *value) {
-    fprintf(stderr, "strmapset %.*s\n", len, str);
     if (!(map && len)) return 0;
     StrMap *p = map;
     for(int i = 0; i < len; i++) {
