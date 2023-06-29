@@ -26,6 +26,7 @@ typedef enum {
     TK_VOID,     // void
     TK_BREAK,    // break
     TK_CONTINUE, // continue
+    TK_STRUCT,   // struct
 } TokenKind;
 
 typedef struct Token Token;
@@ -65,6 +66,8 @@ typedef struct Type Type;
 
 typedef struct LVar LVar;
 
+typedef struct Vec Vec;
+
 struct Type {
     enum {
         INT,
@@ -74,6 +77,7 @@ struct Type {
         FUNC,
         VA_ARGS, // ...
         VOID,
+        STRUCT,
     } ty;
     Type *ptr_to;
     int array_size;
@@ -81,6 +85,8 @@ struct Type {
     Type *args; // ty == FUNCの時の引数の列
     int arglen; // ty == FUNCの時の引数の数
     Token *tok; // argsや構造体の名前など
+    int offset; // ty == STRUCTの時のoffset
+    Vec *fields; // ty == STRUCTの時のフィールド
 };
 
 // local variable
@@ -221,6 +227,17 @@ struct StrMap {
 };
 
 void *strmapget(StrMap *map, char *str, int len);
-void strmapset(StrMap *map, char *str, int len, void *value);
+int strmapset(StrMap *map, char *str, int len, void *value);
 
 extern StrMap *strmap;
+extern StrMap *structmap;
+
+struct Vec {
+    void **data;
+    int len;
+    int cap;
+};
+
+void *at(Vec *v, int i);
+void push(Vec *v, void *i);
+Vec *vec_new();

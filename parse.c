@@ -193,6 +193,12 @@ Token *tokenize(char *p) {
             continue;
         }
 
+        if (strncmp(p, "struct", 6) == 0 && !is_alnum(p[6])) {
+            cur = new_token(TK_STRUCT, cur, p, 6);
+            p += 6;
+            continue;
+        }
+
         if (strncmp(p, "while", 5) == 0 && !is_alnum(p[5])) {
             cur = new_token(TK_WHILE, cur, p, 5);
             p += 5;
@@ -280,7 +286,8 @@ Token *tokenize(char *p) {
             strncmp(p, "+=", 2) == 0 || strncmp(p, "-=", 2) == 0 ||
             strncmp(p, "*=", 2) == 0 || strncmp(p, "/=", 2) == 0 ||
             strncmp(p, "%=", 2) == 0 || strncmp(p, "&=", 2) == 0 ||
-            strncmp(p, "|=", 2) == 0 || strncmp(p, "^=", 2) == 0) {
+            strncmp(p, "|=", 2) == 0 || strncmp(p, "^=", 2) == 0 ||
+            strncmp(p, "->", 2) == 0) {
                 cur = new_token(TK_RESERVED, cur, p, 2);
                 p += 2;
                 continue;
@@ -295,7 +302,7 @@ Token *tokenize(char *p) {
             continue;
         }
 
-        if (strchr("+-*/()<>;={},&[]%^|?:~!", *p)) {
+        if (strchr("+-*/()<>;={},&[]%^|?:~!.", *p)) {
             cur = new_token(TK_RESERVED, cur, p++, 1);
             continue;
         }
@@ -434,6 +441,18 @@ int sizeof_parse(Type *type) {
         return type->array_size * sizeof_parse(type->ptr_to);
     else if (type->ty == CHAR || type->ty == VOID || type->ty == FUNC)
         return sizeof(char);
+    else if (type->ty == STRUCT) {
+        if (!type->fields) {
+            error("sizeofをフィールド不明な構造体に適用できません");
+        }
+        if (type->fields->len == 0) {
+            return 0;
+        }
+        Type *ty = type->fields->data[type->fields->len - 1];
+        int size = ty->offset + sizeof_parse(ty);
+        int align = get_align(ty);
+        return size + (align - (size % align)) % align;
+    }
     else error_at(token->str, "不明な型のsizeof");
 }
 
@@ -442,7 +461,55 @@ int get_align(Type *type) {
         error_at(token->str, "type parse error");
     else if (type->ty == ARRAY)
         return get_align(type->ptr_to);
-    else sizeof_parse(type);
+    else if (type->ty == STRUCT) {
+        if (!type->fields) {
+            error("get_alignをフィールド不明な構造体に適用できません");
+        }
+        int max = 1;
+        for (int i = 0; i < type->fields->len; i++) {
+            Type *ty = type->fields->data[i];
+            int align = get_align(ty);
+            if (align > max) {
+                max = align;
+            }
+        }
+        return max;
+    } else sizeof_parse(type);
+}
+
+// type.ty == STRUCTでtype.arglen == -1を受け取って初期化する
+// consume("{")はされていると思って読む
+Type *def_struct(Type *type) {
+    if (type->ty != STRUCT) {
+        error_at(token->str, "structではありません(コンパイラのバグ)");
+    }
+    if (type->fields) {
+        error_at(token->str, "定義済みです");
+    }
+    int arglen = 0;
+    Type *args = type;
+    int offset = 0;
+    type->fields = vec_new();
+    if (!consume("}")) {
+        while(1) {
+            Type *ty = eval_type_all();
+            if (!ty || !ty->tok) {
+                error_at(token->str, "フィールド名が定義されていません");
+            }
+            expect(";");
+            int size = sizeof_parse(ty);
+            int align = get_align(ty);
+            if (offset % align != 0) {
+                offset += align - (offset % align);
+            }
+            ty->offset = offset;
+            offset += size;
+            push(type->fields, ty);
+            if (consume("}")) break;
+        }
+    }
+    type->arglen = arglen;
+    return type;
 }
 
 // 不完全な型を返す。bottomに、不完全な末端があるので埋めること
@@ -504,6 +571,8 @@ Type *eval_type_acc(Token **ident, Type **bottom) {
                 while(1) {
                     *args = eval_type_all();
                     btm_->arglen += 1;
+                    if (!(*args)) error_at(token->str, "型として処理できません");
+                    if ((*args)->ty == STRUCT) error_at(token->str, "関数の引数に構造体は渡せません(unimplemented)");
                     if ((*args)->ty == ARRAY) (*args)->ty = PTR; // 関数の引数ではint a[10]などはすべてポインタとする
                     if ((*args)->ty == VA_ARGS || !consume(",")) break;
                     args = &(*args)->args;
@@ -593,6 +662,27 @@ Type *eval_type_top() {
     } else if (consumeTK(TK_VOID)) {
         type = calloc(1, sizeof(Type));
         type->ty = VOID;
+    } else if (consumeTK(TK_STRUCT)) {
+        Token *tok = consume_ident();
+        if (tok) {
+            type = strmapget(structmap, tok->str, tok->len);
+            show_type(type, 0);
+            if (type != NULL) {
+                if (consume("{")) {
+                    def_struct(type);
+                }
+                return type;
+            }
+        }
+        type = calloc(1, sizeof(Type));
+        type->ty = STRUCT;
+        if (consume("{")) {
+            def_struct(type);
+        }
+        if (tok) {
+            strmapset(structmap, tok->str, tok->len, type);
+        }
+        show_type(type, 0);
     }
     return type;
 }
@@ -757,7 +847,7 @@ Node *block_node(Node *child, Node *prev) {
 }
 
 char *type_name_arr[] = {
-    "int", "ptr", "array", "char", "func", "...", "void",
+    "int", "ptr", "array", "char", "func", "...", "void", "struct"
 };
 
 void show_type(Type *type, int indent) {
@@ -782,6 +872,14 @@ void show_type(Type *type, int indent) {
         }
         fprintf(stderr, "%*sreturn:\n", indent + 2, "");
         show_type(type->ret, indent + 4);
+    } else if (type->ty == STRUCT) {
+        if (type->fields) {
+            fprintf(stderr, "%*sfield:\n", indent + 2, "");
+            for(int i = 0; i < type->fields->len; i++) {
+                fprintf(stderr, "%*soffset: %d\n", indent + 4, "", ((Type *)type->fields->data[i])->offset);
+                show_type(type->fields->data[i], indent + 4);
+            }
+        }
     }
 }
 
@@ -820,11 +918,21 @@ void program() {
 }
 
 void globalstmt(GVar **ptr) {
-    Type *type = eval_type_all();
+    Type *type = eval_type_top();
+    if (consume(";")) {
+        *ptr = calloc(1, sizeof(GVar));
+        (*ptr)->type = calloc(1, sizeof(Type));
+        (*ptr)->type->ty = FUNC;  // ty == funcでnode == 0なら何も生成しない
+        return;
+    }
+    type = eval_type_ident(type);
     Token *tok = type->tok;
     if (!type || !tok) error_at(token->str, "型が正しくありません");
     GVar *gvar = init_gvar(type, tok);
     if (type->ty == FUNC) {
+        if (type->ret->ty == STRUCT) {
+            error_at(token->str, "structを返す関数は利用できません(unimplemented)");
+        }
         if (consume(";")) {
             *ptr = gvar;
             return;
@@ -996,12 +1104,16 @@ Node *stmt() {
     } else if (consume("{")) {
         node = block_node(NULL, NULL);
         LVar *now_locals = locals;
+        StrMap *now_structmap = structmap;
+        structmap = calloc(1, sizeof(StrMap));
+        structmap->value = now_structmap;
         while(!consume("}")) {
             node = block_node(stmt(), node);
         }
         if (locals && (locals->offset > max_offset)) {
             max_offset = locals->offset;
         }
+        structmap = structmap->value;
         locals = now_locals;
     } else if(consumeTK(TK_BREAK)) {
         node = new_node(ND_BREAK, NULL, NULL, NULL);
@@ -1020,7 +1132,13 @@ Node *stmt() {
 
 // (int | char) indent ([number])? (= assign | )? | assign
 Node *expr() {
-    Type *type = eval_type_all();
+    Type *type = eval_type_top();
+    if (*token->str == ';') {
+        return new_node(ND_DECLARATION, NULL, NULL, NULL);
+    }
+    if (type) {
+        type = eval_type_ident(type);
+    }
     if(type) {
         show_type(type, 0);
         LVar *lvar = init_lvar(type);
@@ -1441,6 +1559,54 @@ Node *unary() {
             node = new_node(ND_INCR, NULL, node, node->type);
         } else if (consume("--")) {
             node = new_node(ND_DECR, NULL, node, node->type);
+        } else if (consume(".")) {
+            fprintf(stderr, "try\n");
+            if (node->type->ty != STRUCT) {
+                error_at(token->str, ".は未定義です");
+            }
+            Token *tok = consume_ident();
+            if (!tok) {
+                error_at(token->str, "identがありません");
+            }
+            Type *ty;
+            for(int i = 0; i < node->type->fields->len; i++) {
+                ty = node->type->fields->data[i];
+                if (ty->tok->len == tok->len && memcmp(ty->tok->str, tok->str, tok->len) == 0) {
+                    Type *t = calloc(1, sizeof(Type));
+                    t->ptr_to = ty;
+                    t->ty = PTR;
+                    node = new_node(ND_ADDR, node, NULL, NULL);
+                    node = new_node(ND_ADD, node, new_node_num(ty->offset), t);
+                    node = deref_node(node);
+                    break;
+                }
+            }
+            if (ty == NULL) {
+                error_at(tok->str, "このフィールドはありません");
+            }
+        } else if (consume("->")) {
+            if (!(is_ptr_or_array(node) && node->type->ptr_to->ty == STRUCT)) {
+                error_at(token->str, "->は未定義です");
+            }
+            Token *tok = consume_ident();
+            if (!tok) {
+                error_at(token->str, "identがありません");
+            }
+            Type *ty;
+            for(int i = 0; i < node->type->ptr_to->fields->len; i++) {
+                ty = node->type->ptr_to->fields->data[i];
+                if (ty->tok->len == tok->len && memcmp(ty->tok->str, tok->str, tok->len) == 0) {
+                    Type *t = calloc(1, sizeof(Type));
+                    t->ptr_to = ty;
+                    t->ty = PTR;
+                    node = new_node(ND_ADD, node, new_node_num(ty->offset), t);
+                    node = deref_node(node);
+                    break;
+                }
+            }
+            if (ty == NULL) {
+                error_at(tok->str, "このフィールドはありません");
+            }
         } else
             return node;
     }
