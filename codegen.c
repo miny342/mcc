@@ -48,7 +48,7 @@ void gen_global() {
             printf("  push rbp\n");
             printf("  mov rbp, rsp\n");
 
-            int sub = (code->offset) + (8 - code->offset % 8) % 8;
+            int sub = (code->offset) + (16 - code->offset % 16) % 16;
             if (sub > 0)
                 printf("  sub rsp, %d\n", sub);
 
@@ -159,68 +159,53 @@ void gen_lval(Node *node) {
         printf("  lea rax, [rbp+%d]\n", -node->lvar->offset);
 }
 
-void gen_callstack(Node *node, int num) {
+int gen_callstack(Node *node, int num) {
+    int i;
     if(node->lhs) {
-        gen_callstack(node->rhs, num + 1);
+        i = gen_callstack(node->rhs, num + 1);
         gen(node->lhs);
         printf("  push rax\n");
+        return i;
+    } else {
+        i = num > 6 ? num - 6 : 0;
+        if ((pushcnt + i) & 1) {
+            printf("  sub rsp, 8\n");
+            i += 1;
+        }
+        return i;
     }
 }
 
-int gen_callregister(Node *node, int num) {
-    if (!(node->rhs)) {
-        if(num > 6) {
-            return num - 6;
-        }
-        return 0;
+void gen_callregister(Node *node) {
+    int num = 0;
+    node = node->rhs;
+    while(node && num < 6) {
+        printf("  pop %s\n", qword_reg[num]);
+        num++;
+        node = node->rhs;
     }
-    switch (num){
-        case 0:
-            printf("  pop rdi\n");
-            break;
-        case 1:
-            printf("  pop rsi\n");
-            break;
-        case 2:
-            printf("  pop rdx\n");
-            break;
-        case 3:
-            printf("  pop rcx\n");
-            break;
-        case 4:
-            printf("  pop r8\n");
-            break;
-        case 5:
-            printf("  pop r9\n");
-            break;
-    }
-    return gen_callregister(node->rhs, num + 1);
 }
 
 void gen_call(Node *node) {
     if (node->kind != ND_CALL)
         error("this is not call function");
 
-    int stack;
-
-    gen_callstack(node->rhs, 0);
+    int stack = gen_callstack(node->rhs, 0);
 
     if (node->lhs->kind == ND_GVAR) {
-        stack = gen_callregister(node->rhs, 0);
+        gen_callregister(node->rhs);
         printf("  xor rax, rax\n");
         printf("  call %.*s\n", node->lhs->gvar->len, node->lhs->gvar->name);
-        if (stack > 0) {
-            printf("  add rsp, %d\n", stack * 8);
-        }
     } else {
         gen(node->lhs);
-        stack = gen_callregister(node->rhs, 0);
+        gen_callregister(node->rhs);
         printf("  mov r10, rax\n");
         printf("  xor rax, rax\n");
         printf("  call r10\n");
-        if (stack > 0) {
-            printf("  add rsp, %d\n", stack * 8);
-        }
+    }
+    if (stack > 0) {
+        printf("  add rsp, %d\n", stack * 8);
+        pushcnt -= stack;
     }
 }
 
@@ -256,9 +241,11 @@ void gen(Node *node) {
         case ND_ASSIGN:
             gen_lval(node->lhs);
             printf("  push rax\n");
+            pushcnt += 1;
             gen(node->rhs);
 
             printf("  pop rdi\n");
+            pushcnt -= 1;
             size = sizeof_parse(node->lhs->type);
             if (size == 4) {
                 printf("  mov dword ptr [rdi], eax\n");
@@ -512,10 +499,12 @@ void gen(Node *node) {
 
     gen(node->lhs);
     printf("  push rax\n");
+    pushcnt += 1;
     gen(node->rhs);
 
     printf("  mov rdi, rax\n");
     printf("  pop rax\n");
+    pushcnt -= 1;
     switch(node->kind) {
         case ND_ADD:
             printf("  add rax, rdi\n");

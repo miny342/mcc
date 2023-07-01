@@ -11,6 +11,8 @@ int labelcnt = 2;
 int continue_label = 0;
 int break_label = 0;
 
+int pushcnt = 0;
+
 StrMap *strmap;
 StrMap *structmap;
 

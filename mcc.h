@@ -241,3 +241,5 @@ struct Vec {
 void *at(Vec *v, int i);
 void push(Vec *v, void *i);
 Vec *vec_new();
+
+extern int pushcnt;
