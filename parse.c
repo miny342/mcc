@@ -229,6 +229,12 @@ Token *tokenize(char *p) {
             continue;
         }
 
+        if (strncmp(p, "enum", 4) == 0 && !is_alnum(p[4])) {
+            cur = new_token(TK_ENUM, cur, p, 4);
+            p += 4;
+            continue;
+        }
+
         if (strncmp(p, "int", 3) == 0 && !is_alnum(p[3])) {
             cur = new_token(TK_INT, cur, p, 3);
             p += 3;
@@ -512,6 +518,31 @@ Type *def_struct(Type *type) {
     return type;
 }
 
+// type.ty == INTを受け取りenumとみて初期化
+// {は読んだとみる
+Type *def_enum(Type *type) {
+    if (type->ty != INT) {
+        error_at(token->str, "enumではありません(コンパイラのバグ)");
+    }
+    int i = 0;
+    if (!consume("}")) {
+        while(!consume("}")) {
+            Token *tok = consume_ident();
+            if (strmapget(enumkeymap, tok->str, tok->len)) {
+                error_at(tok->str, "enumとして定義済みです");
+            }
+            if (consume("=")) {
+                i = calc(assign());
+            }
+            strmapset(enumkeymap, tok->str, tok->len, new_node_num(i++));
+            if (!consume(",")) {
+                expect("}");
+                break;
+            }
+        }
+    }
+}
+
 // 不完全な型を返す。bottomに、不完全な末端があるので埋めること
 Type *eval_type_acc(Token **ident, Type **bottom) {
 
@@ -680,6 +711,25 @@ Type *eval_type_top() {
         }
         if (tok) {
             strmapset(structmap, tok->str, tok->len, type);
+        }
+    } else if (consumeTK(TK_ENUM)) {
+        Token *tok = consume_ident();
+        if (tok) {
+            type = strmapget(enummap, tok->str, tok->len);
+            if (type != NULL) {
+                if (consume("{")) {
+                    def_enum(type);
+                }
+                return type;
+            }
+        }
+        type = calloc(1, sizeof(Type));
+        type->ty = INT;
+        if (consume("{")) {
+            def_enum(type);
+        }
+        if (tok) {
+            strmapset(enummap, tok->str, tok->len, type);
         }
     }
     return type;
@@ -1661,6 +1711,11 @@ Node *primary() {
                     return new_node(ND_ADDR, node, NULL, tmp);
                 }
                 return node;
+            } else {
+                Node *n = strmapget(enumkeymap, tok->str, tok->len);
+                if (n) {
+                    return n;
+                }
             }
         }
         error_at(tok->str, "undefined");

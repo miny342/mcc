@@ -15,6 +15,8 @@ int pushcnt = 0;
 
 StrMap *strmap;
 StrMap *structmap;
+StrMap *enummap;
+StrMap *enumkeymap;
 
 char *read_file(char *path) {
     FILE *fp;
@@ -53,6 +55,8 @@ int main(int argc, char **argv){
 
     strmap = calloc(1, sizeof(StrMap));
     structmap = calloc(1, sizeof(StrMap));
+    enummap = calloc(1, sizeof(StrMap));
+    enumkeymap = calloc(1, sizeof(StrMap));
 
     // user_input = argv[1];
     filename = argv[1];

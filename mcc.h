@@ -27,6 +27,7 @@ typedef enum {
     TK_BREAK,    // break
     TK_CONTINUE, // continue
     TK_STRUCT,   // struct
+    TK_ENUM,     // enum
 } TokenKind;
 
 typedef struct Token Token;
@@ -231,6 +232,8 @@ int strmapset(StrMap *map, char *str, int len, void *value);
 
 extern StrMap *strmap;
 extern StrMap *structmap;
+extern StrMap *enummap;
+extern StrMap *enumkeymap;
 
 struct Vec {
     void **data;
