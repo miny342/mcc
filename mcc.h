@@ -28,6 +28,7 @@ typedef enum {
     TK_CONTINUE, // continue
     TK_STRUCT,   // struct
     TK_ENUM,     // enum
+    TK_ONE_CHAR, // 一文字
 } TokenKind;
 
 typedef struct Token Token;

@@ -151,6 +151,31 @@ bool at_eof() {
     return token->kind == TK_EOF;
 }
 
+// Cの意味で一文字読む
+char read_one_char(char **top) {
+    fprintf(stderr, "%c\n", **top);
+    if (**top == '\\') {
+        (*top)++;
+        if (**top == 'n') {
+            (*top)++;
+            return '\n';
+        } else if (**top == '\\') {
+            (*top)++;
+            return '\\';
+        } else if (**top == '"') {
+            (*top)++;
+            return '"';
+        } else if (**top == '\'') {
+            (*top)++;
+            return '\'';
+        } else {
+            error_at(*top, "charとして処理できません");
+        }
+    }
+    (*top)++;
+    return *(*top - 1);
+}
+
 // 新しいトークンを作成してcurに繋げる
 Token *new_token(TokenKind kind, Token *cur, char *str, int len) {
     Token *tok = calloc(1, sizeof(Token));
@@ -276,10 +301,23 @@ Token *tokenize(char *p) {
         }
 
         if (*p == '\"') {
-            char *tmp = strstr(p + 1, "\"");
+            char *tmp = p + 1;
+            while (*tmp != '\"') read_one_char(&tmp);
             if (!tmp) error_at(p, "\" が見つかりません");
             tmp++;
             cur = new_token(TK_STR, cur, p, tmp - p);
+            p = tmp;
+            continue;
+        }
+
+        if (*p == '\'') {
+            char *tmp = p + 1;
+            read_one_char(&tmp);
+            if (*tmp != '\'') {
+                error_at(p, "一文字ではありません");
+            }
+            tmp++;
+            cur = new_token(TK_ONE_CHAR, cur, p, tmp - p);
             p = tmp;
             continue;
         }
@@ -1066,11 +1104,11 @@ void globalstmt(GVar **ptr) {
                     node = calloc(1, sizeof(Node));
                     node->kind = ND_BLOCK;
                     Node *now = node;
-                    for(; i < token->len - 2; i++) {
+                    for(; *p != '\"'; i++) {
                         now->lhs = calloc(1, sizeof(Node));
                         now->lhs->kind = ND_NUM;
                         now->lhs->type = &char_type;
-                        now->lhs->val = p[i];
+                        now->lhs->val = read_one_char(&p); // jp[i];
                         now->rhs = calloc(1, sizeof(Node));
                         now->rhs->kind = ND_BLOCK;
                         now = now->rhs;
@@ -1237,8 +1275,8 @@ Node *expr() {
                     }
                 } else if (token->kind == TK_STR) {
                     char *p = token->str + 1;
-                    while (*p != '"') {
-                        node = block_node(assign_node(deref_node(add_node(ptr_node, new_node_num(i++))), new_node_num(*(p++))), node);
+                    for (; *p != '"'; i++) {
+                        node = block_node(assign_node(deref_node(add_node(ptr_node, new_node_num(i))), new_node_num(read_one_char(&p))), node);
                     }
                     node = block_node(assign_node(deref_node(add_node(ptr_node, new_node_num(i++))), new_node_num(0)), node);
                     if (lvar->type->array_size != -1) {
@@ -1669,6 +1707,12 @@ Node *primary() {
         Node *node = assign();
         expect(")");
         return node;
+    }
+
+    if (token->kind == TK_ONE_CHAR) {
+        char *tmp = token->str + 1;
+        token = token->next;
+        return new_node_num(read_one_char(&tmp));
     }
 
     if (token->kind == TK_STR) {
