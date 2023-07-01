@@ -153,7 +153,6 @@ bool at_eof() {
 
 // Cの意味で一文字読む
 char read_one_char(char **top) {
-    fprintf(stderr, "%c\n", **top);
     if (**top == '\\') {
         (*top)++;
         if (**top == 'n') {
@@ -203,6 +202,12 @@ Token *tokenize(char *p) {
         if (strncmp(p, "continue", 8) == 0 && !is_alnum(p[8])) {
             cur = new_token(TK_CONTINUE, cur, p, 8);
             p += 8;
+            continue;
+        }
+
+        if (strncmp(p, "typedef", 7) == 0 && !is_alnum(p[7])) {
+            cur = new_token(TK_TYPEDEF, cur, p, 7);
+            p += 7;
             continue;
         }
 
@@ -769,6 +774,14 @@ Type *eval_type_top() {
         if (tok) {
             strmapset(enummap, tok->str, tok->len, type);
         }
+    } else {
+        Token *tok = token;
+        if (tok->kind == TK_IDENT) {
+            type = strmapget(typenamemap, tok->str, tok->len);
+            if (type) {
+                token = tok->next;
+            }
+        }
     }
     return type;
 }
@@ -939,6 +952,7 @@ char *type_name_arr[] = {
 void show_type(Type *type, int indent) {
     if (type == NULL) {
         fprintf(stderr, "%*sNULL\n", indent, "");
+        fprintf(stderr, "\n");
         return;
     }
     if(type->tok) {
@@ -1008,6 +1022,21 @@ void program() {
 }
 
 void globalstmt(GVar **ptr) {
+    if (consumeTK(TK_TYPEDEF)) {
+        Type *type = eval_type_all();
+        if (!type->tok) {
+            error_at(token->str, "型名がありません");
+        }
+        if (strmapget(typenamemap, type->tok->str, type->tok->len)) {
+            error_at(token->str, "定義済みです");
+        }
+        strmapset(typenamemap, type->tok->str, type->tok->len, type);
+        expect(";");
+        *ptr = calloc(1, sizeof(GVar));
+        (*ptr)->type = calloc(1, sizeof(Type));
+        (*ptr)->type->ty = FUNC;
+        return;
+    }
     Type *type = eval_type_top();
     if (consume(";")) {
         *ptr = calloc(1, sizeof(GVar));

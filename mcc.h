@@ -29,6 +29,7 @@ typedef enum {
     TK_STRUCT,   // struct
     TK_ENUM,     // enum
     TK_ONE_CHAR, // 一文字
+    TK_TYPEDEF,  // typedef
 } TokenKind;
 
 typedef struct Token Token;
@@ -235,6 +236,7 @@ extern StrMap *strmap;
 extern StrMap *structmap;
 extern StrMap *enummap;
 extern StrMap *enumkeymap;
+extern StrMap *typenamemap;
 
 struct Vec {
     void **data;

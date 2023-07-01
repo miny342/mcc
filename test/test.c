@@ -331,6 +331,16 @@ assert(t61, {
 }, 260 + 261 + 262);
 assert(t62, {char a = '\n'; char b = '\\'; char c = '\''; char d = '"'; return a + b + c + d;}, 10 + 92 + 39 + 34);
 
+typedef struct {
+    int val;
+    char s;
+    enum {
+        ALPHA,
+        BETA,
+    } e;
+} T63;
+assert(t63, {T63 p; p.val = 3; p.s = '\n'; p.e = BETA; return p.val + p.s + p.e;}, 14);
+
 int a = 1;
 int *d[10] = { &a + 1, &a + 2 };
 int *b = &a;
@@ -338,6 +348,8 @@ char k[] = "anna";
 char kl[10] = "and";
 char *p = "pic";
 int (*ffn)() = t0_assert + 1;
+
+
 
 int main() {
     t0();t1();t2();t3();t4();t5();t6();t7();t8();t9();t10();
