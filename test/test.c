@@ -9,6 +9,8 @@ void exit(int status);
 void print(int i);
 int *alloc4(int a, int b, int c, int d);
 
+#define ONE 1
+
 #define assert(name, expr, expect) \
 int name ## _assert () expr \
 int name () {\
@@ -16,7 +18,7 @@ int name () {\
     name ## _i = name ## _assert ();\
     if(name ## _i != (expect)) {\
         printf("%s: expected %d, found %d\n", #name, (expect), name ## _i);\
-        exit(1);\
+        exit(ONE);\
     } else printf("ok %s\n", #name);\
 }
 

@@ -192,7 +192,21 @@ Token *tokenize(char *p) {
     Token *cur = &head;
     int lvar_length;
 
+    int is_reading_macro = 0;
+
     while(*p) {
+        if (is_reading_macro && *p == '\\' && p[1] == '\n') {
+            p += 2;
+            continue;
+        }
+
+        if (is_reading_macro && *p == '\n') {
+            is_reading_macro = 0;
+            cur = new_token(TK_MACRO_END, cur, p, 1);
+            p += 1;
+            continue;
+        }
+
         // 空白文字をスキップ
         if (isspace(*p)) {
             p++;
@@ -342,6 +356,13 @@ Token *tokenize(char *p) {
                 continue;
             }
 
+        if (*p == '#') {
+            is_reading_macro = 1;
+            cur = new_token(TK_MACRO, cur, p, 1);
+            p++;
+            continue;
+        }
+
         if (isalpha(*p) || *p == '_') {
             lvar_length = 0;
             while(is_alnum(p[lvar_length]))
@@ -357,7 +378,9 @@ Token *tokenize(char *p) {
         }
 
         if (isdigit(*p)) {
-            cur = new_token(TK_NUM, cur, p, 0);
+            char *tmp = p;
+            while(isdigit(*tmp)) tmp++;
+            cur = new_token(TK_NUM, cur, p, tmp - p);
             cur->val = strtol(p, &p, 10);
             continue;
         }
@@ -367,6 +390,256 @@ Token *tokenize(char *p) {
 
     new_token(TK_EOF, cur, p, 0);
     return head.next;
+}
+
+// NULLに行きつくまで複製
+Token *duplicate_token(Token *tok) {
+    if (tok == NULL) {
+        return NULL;
+    }
+    Token *t = malloc(sizeof(Token));
+    memcpy(t, tok, sizeof(Token));
+    t->next = duplicate_token(tok->next);
+    return t;
+}
+
+// tokenに入ったTokenを処理してTokenを返す
+Token *preprocess() {
+    Token *head = token; // 退避
+    Token *prev = NULL;
+
+    while (1) {
+        if (token == NULL) {
+            break;
+        }
+        Token *ident = consume_ident();
+        if (ident) {
+            MacroData *data = strmapget(macromap, ident->str, ident->len);
+            if (data) {
+                strmapset(macromap, ident->str, ident->len, NULL); // 再帰的な展開を抑えるために一時的に未定義にする
+                Token *prev_in_macro;
+                Vec *tmpv = vec_new();
+                if (data->args && consume("(")) {
+                    if (data->args->len > 0) {
+                        int kakko = 0;
+                        push(tmpv, token);
+                        while(1) {
+                            prev_in_macro = token;
+                            if (consume("(")) {
+                                kakko++;
+                            } else if (consume(")")) {
+                                if (kakko == 0 && data->args->len <= tmpv->len) {
+                                    prev_in_macro->next = NULL;
+                                    break;
+                                }
+                                if (kakko == 0) {
+                                    error_at(token->str, "マクロの引数が足りません");
+                                }
+                                kakko--;
+                            } else if (kakko == 0 && consume(",")) {
+                                prev_in_macro->next = NULL;
+                                push(tmpv, token);
+                            } else {
+                                token = token->next;
+                            }
+                        }
+                    }
+                    if (tmpv->len > data->args->len) {
+                        error_at(token->str, "引数が多すぎます");
+                    }
+
+                    Token *replace_to = duplicate_token(data->expand_to);
+                    prev_in_macro = NULL;
+                    // argを変換
+                    for (Token *tok = replace_to; tok; tok = tok->next) {
+                        if (tok->kind == TK_IDENT) {
+                            for (int i = 0; i < data->args->len; i++) {
+                                Token *arg = data->args->data[i];
+                                if (arg->len == tok->len && !strncmp(arg->str, tok->str, arg->len)) {
+                                    Token *arg_replace_to = duplicate_token(tmpv->data[i]);
+                                    if (!prev_in_macro) {
+                                        replace_to = arg_replace_to;
+                                        prev_in_macro = arg_replace_to;
+                                    } else {
+                                        prev_in_macro->next = arg_replace_to;
+                                    }
+                                    while(arg_replace_to->next) {
+                                        prev_in_macro = arg_replace_to;
+                                        arg_replace_to = arg_replace_to->next;
+                                    }
+                                    prev_in_macro->next = tok->next;
+                                    break;
+                                }
+                            }
+                        }
+
+                        prev_in_macro = tok;
+                    }
+
+                    prev_in_macro = NULL;
+                    // argが変換された物をみて文字列操作
+                    for (Token *tok = replace_to; tok; tok = tok->next) {
+                        if (tok->kind == TK_MACRO) {
+                            if (prev_in_macro == NULL) {
+                                error("#が先頭にあります");
+                            }
+                            if (tok->next->kind == TK_MACRO) {
+                                tok = tok->next->next;
+                                int len = prev_in_macro->len + tok->len;
+                                char *tmp = malloc(len + 1);
+                                memcpy(tmp, prev_in_macro->str, prev_in_macro->len);
+                                memcpy(tmp + prev_in_macro->len, tok->str, tok->len);
+                                tmp[len] = 0;
+                                Token *t = tokenize(tmp);
+                                prev_in_macro->kind = t->kind;
+                                prev_in_macro->str = t->str;
+                                prev_in_macro->len = t->len;
+                                prev_in_macro->next = t->next;
+                                if (t->next->kind != TK_EOF) {
+                                    while(t->next) {
+                                        prev_in_macro = t;
+                                        t = t->next;
+                                    }
+                                }
+                                prev_in_macro->next = tok->next;
+                                continue;
+                            } else {
+                                // TODO: エスケープする
+                                tok = tok->next;
+                                prev_in_macro->next = tok;
+                                tok->kind = TK_STR;
+                                tok->len += 2;
+                                char *tmp = malloc(tok->len + 1);
+                                tmp[0] = '\"';
+                                tmp[tok->len - 1] = '\"';
+                                tmp[tok->len] = 0;
+                                memcpy(tmp + 1, tok->str, tok->len - 2);
+                                tok->str = tmp;
+                            }
+                        }
+                        prev_in_macro = tok;
+                    }
+
+                    if (replace_to != NULL) {
+                        Token *now_token = token;
+                        token = replace_to;
+                        replace_to = preprocess();
+                        token = now_token;
+
+                        prev->next = replace_to;
+                        while(replace_to->next) replace_to = replace_to->next;
+                        replace_to->next = token;
+                        prev = replace_to;
+                    } else {
+                        prev->next = ident->next;
+                    }
+                    strmapset(macromap, ident->str, ident->len, data);
+                    continue;
+                } else if (!data->args) {
+                    strmapset(macromap, ident->str, ident->len, NULL);
+
+                    Token *replace_to = duplicate_token(data->expand_to);
+                    if (replace_to != NULL) {
+                        Token *now_token = token;
+                        token = replace_to;
+                        replace_to = preprocess();
+                        token = now_token;
+
+                        prev->next = replace_to;
+                        while(replace_to->next) replace_to = replace_to->next;
+                        replace_to->next = token;
+                        prev = replace_to;
+                    } else {
+                        prev->next = ident->next;
+                    }
+                    strmapset(macromap, ident->str, ident->len, data);
+                    continue;
+                } else {
+                    prev = ident;
+                    token = ident->next;
+                    continue;
+                }
+            } else {
+                prev = ident;
+                token = ident->next;
+                continue;
+            }
+        } else if (consumeTK(TK_MACRO)) {
+            Token *tok = consume_ident();
+            if (tok->len == 6 && !strncmp(tok->str, "define", 6)) {
+                tok = consume_ident();
+                MacroData *data = calloc(1, sizeof(MacroData));
+                if (consume("(")) {
+                    data->args = vec_new();  // 関数マクロかはargsの初期化で見分ける
+                    if (!consume(")")) {
+                        while(1) {
+                            Token *arg = consume_ident();
+                            if (!arg) {
+                                error_at(token->str, "不正なトークンです");
+                            }
+                            push(data->args, arg); // トークンを指すアドレスを入れておく
+                            if (!consume(",")) {
+                                expect(")");
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (token->kind != TK_MACRO_END) {
+                    data->expand_to = token;
+
+                    while (token->next->kind != TK_MACRO_END) {
+                        token = token->next;
+                    }
+                    Token *tmp = token->next;
+                    token->next = NULL;
+                    token = tmp;
+                }
+                if (!consumeTK(TK_MACRO_END)) {
+                    error_at(token->str, "unexpected error(compiler bug)");
+                }
+                prev->next = token;
+                strmapset(macromap, tok->str, tok->len, data);
+                continue;
+            } else {
+                error_at(tok->str, "未定義のマクロです");
+            }
+        } else if (!token->next) {
+            break;
+        }
+        prev = token;
+        token = token->next;
+    }
+    return head;
+}
+
+// token列をそれっぽく表示する
+void print_token(Token *t) {
+    int indent = 0;
+    for (Token *tok = t; tok; tok = tok->next) {
+        if (tok->kind == TK_NUM) {
+            fprintf(stderr, "%d ", tok->val);
+        } else if (tok->kind == TK_RESERVED) {
+            if (*tok->str == '{') {
+                indent++;
+                fprintf(stderr, "{\n%*s", indent * 4, "");
+            } else if (*tok->str == '}') {
+                if (indent > 0) {
+                    indent--;
+                }
+                fprintf(stderr, "\n%*s}\n%*s", indent * 4, "", indent * 4, "");
+            } else if (*tok->str == ';') {
+                fprintf(stderr, ";\n%*s", indent * 4, "");
+            } else {
+                fprintf(stderr, "%.*s ", tok->len, tok->str);
+            }
+        } else if (tok->kind == TK_EOF) {
+            fprintf(stderr, "EOF ", tok->len, tok->str);
+        } else {
+            fprintf(stderr, "%.*s ", tok->len, tok->str);
+        }
+    }
+    fprintf(stderr, "\n");
 }
 
 

@@ -8,6 +8,9 @@
 
 // tokenize.c
 
+
+typedef struct Vec Vec;
+
 // トークンの種類
 typedef enum {
     TK_RESERVED, // 記号
@@ -30,6 +33,8 @@ typedef enum {
     TK_ENUM,     // enum
     TK_ONE_CHAR, // 一文字
     TK_TYPEDEF,  // typedef
+    TK_MACRO,    // #
+    TK_MACRO_END, // #の後の改行
 } TokenKind;
 
 typedef struct Token Token;
@@ -46,6 +51,11 @@ struct Token {
 // 現在着目しているトークン
 extern Token *token;
 
+typedef struct {
+    Vec *args;
+    Token *expand_to;
+} MacroData;
+
 // 入力プログラム
 extern char *user_input;
 
@@ -60,6 +70,8 @@ int expect_number();
 bool at_eof();
 Token *new_token(TokenKind kind, Token *cur, char *str, int len);
 Token *tokenize(char *p);
+Token *preprocess();
+void print_token();
 
 // parse.c
 
@@ -68,8 +80,6 @@ typedef struct Node Node;
 typedef struct Type Type;
 
 typedef struct LVar LVar;
-
-typedef struct Vec Vec;
 
 struct Type {
     enum {
@@ -237,6 +247,7 @@ extern StrMap *structmap;
 extern StrMap *enummap;
 extern StrMap *enumkeymap;
 extern StrMap *typenamemap;
+extern StrMap *macromap;
 
 struct Vec {
     void **data;

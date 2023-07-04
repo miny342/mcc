@@ -18,6 +18,7 @@ StrMap *structmap;
 StrMap *enummap;
 StrMap *enumkeymap;
 StrMap *typenamemap;
+StrMap *macromap;
 
 char *read_file(char *path) {
     FILE *fp;
@@ -59,6 +60,7 @@ int main(int argc, char **argv){
     enummap = calloc(1, sizeof(StrMap));
     enumkeymap = calloc(1, sizeof(StrMap));
     typenamemap = calloc(1, sizeof(StrMap));
+    macromap = calloc(1, sizeof(StrMap));
 
     // user_input = argv[1];
     filename = argv[1];
@@ -66,6 +68,12 @@ int main(int argc, char **argv){
 
     // トークナイズする
     token = tokenize(user_input);
+
+    // print_token(token);
+
+    token = preprocess();
+
+    print_token(token);
 
     // type_test();
 
