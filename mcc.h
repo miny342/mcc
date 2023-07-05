@@ -69,7 +69,7 @@ void expect(char *op);
 int expect_number();
 bool at_eof();
 Token *new_token(TokenKind kind, Token *cur, char *str, int len);
-Token *tokenize(char *p);
+Token *tokenize(char *p, int need_eof);
 Token *preprocess();
 void print_token();
 
@@ -260,3 +260,5 @@ void push(Vec *v, void *i);
 Vec *vec_new();
 
 extern int pushcnt;
+
+char *read_file(char *path);

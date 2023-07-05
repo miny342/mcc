@@ -186,7 +186,7 @@ Token *new_token(TokenKind kind, Token *cur, char *str, int len) {
 }
 
 // 入力文字列pをトークナイズしてそれを返す
-Token *tokenize(char *p) {
+Token *tokenize(char *p, int need_eof) {
     Token head;
     head.next = NULL;
     Token *cur = &head;
@@ -388,7 +388,9 @@ Token *tokenize(char *p) {
         error_at(p, "トークナイズできません");
     }
 
-    new_token(TK_EOF, cur, p, 0);
+    if (need_eof) {
+        new_token(TK_EOF, cur, p, 0);
+    }
     return head.next;
 }
 
@@ -405,8 +407,10 @@ Token *duplicate_token(Token *tok) {
 
 // tokenに入ったTokenを処理してTokenを返す
 Token *preprocess() {
-    Token *head = token; // 退避
-    Token *prev = NULL;
+    // Token *head = token; // 退避
+    Token head;
+    head.next = NULL;
+    Token *prev = &head; // tokenのひとつ前を保持
 
     while (1) {
         if (token == NULL) {
@@ -490,7 +494,7 @@ Token *preprocess() {
                                 memcpy(tmp, prev_in_macro->str, prev_in_macro->len);
                                 memcpy(tmp + prev_in_macro->len, tok->str, tok->len);
                                 tmp[len] = 0;
-                                Token *t = tokenize(tmp);
+                                Token *t = tokenize(tmp, 1);
                                 prev_in_macro->kind = t->kind;
                                 prev_in_macro->str = t->str;
                                 prev_in_macro->len = t->len;
@@ -601,16 +605,68 @@ Token *preprocess() {
                 prev->next = token;
                 strmapset(macromap, tok->str, tok->len, data);
                 continue;
+            } else if (tok->len == 7 && !strncmp(tok->str, "include", 7)) {
+                char *filename;
+                char *filetext;
+                switch (token->kind) {
+                    case TK_STR:
+                        filename = malloc(token->len - 1);
+                        memcpy(filename, token->str + 1, token->len - 2);
+                        filename[token->len - 2] = 0;
+                        fprintf(stderr, "%s\n", filename);
+                        filetext = read_file(filename);
+                        if (filetext) {
+                            token = token->next;
+                            break;
+                        }
+                    case TK_RESERVED:
+                        if (consume("<")) {
+                            int len = 0;
+                            while (token->str[len] != '>') {
+                                len++;
+                            }
+                            char loc[] = "/usr/include/";
+                            filename = malloc(sizeof(loc) + len);
+                            memcpy(filename, loc, sizeof(loc));
+                            memcpy(filename + sizeof(loc) - 1, token->str, len);
+                            filename[sizeof(loc) + len - 1] = 0;
+                            fprintf(stderr, "%s\n", filename);
+                            filetext = read_file(filename);
+                            if (filetext) {
+                                while (!consume(">")) {
+                                    token = token->next;
+                                }
+                                break;
+                            }
+                        }
+                    default:
+                        error_at(token->str, "includeできません");
+                }
+                if (!consumeTK(TK_MACRO_END)) {
+                    error_at(token->str, "不正なトークンを含んでいます");
+                }
+
+                Token *filetoken = tokenize(filetext, 0);
+                Token *now_token = token;
+                token = filetoken;
+                filetoken = preprocess();
+                token = now_token;
+
+                prev->next = filetoken;
+                while(filetoken->next) filetoken = filetoken->next;
+                filetoken->next = token;
+                prev = filetoken;
+
+                continue;
             } else {
                 error_at(tok->str, "未定義のマクロです");
             }
-        } else if (!token->next) {
-            break;
         }
+        prev->next = token;
         prev = token;
         token = token->next;
     }
-    return head;
+    return head.next;
 }
 
 // token列をそれっぽく表示する
@@ -634,7 +690,7 @@ void print_token(Token *t) {
                 fprintf(stderr, "%.*s ", tok->len, tok->str);
             }
         } else if (tok->kind == TK_EOF) {
-            fprintf(stderr, "EOF ", tok->len, tok->str);
+            fprintf(stderr, "EOF ");
         } else {
             fprintf(stderr, "%.*s ", tok->len, tok->str);
         }
