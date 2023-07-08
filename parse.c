@@ -243,6 +243,12 @@ Token *tokenize(char *p, int need_eof) {
             continue;
         }
 
+        if (strncmp(p, "extern", 6) == 0 && !is_alnum(p[6])) {
+            cur = new_token(TK_EXTERN, cur, p, 6);
+            p += 6;
+            continue;
+        }
+
         if (strncmp(p, "while", 5) == 0 && !is_alnum(p[5])) {
             cur = new_token(TK_WHILE, cur, p, 5);
             p += 5;
@@ -1273,15 +1279,22 @@ void assign_lvar_arr(LVar *lvar, int len) {
     lvar->offset = calc_aligned((locals ? locals->offset : 0), lvar->type);
 }
 
-GVar *init_gvar(Type *type, Token *tok) {
-    if (find_gvar(tok)) {
+
+// extern宣言されていた場合そのまま返す
+GVar *init_gvar(Type *type, Token *tok, int is_extern) {
+    GVar *gvar = find_gvar(tok);
+    if (gvar) {
+        if (gvar->is_extern) {  // TODO: 型が一致するか
+            return gvar;
+        }
         error_at(token->str, "duplicate");
     }
-    GVar *gvar = calloc(1, sizeof(GVar));
+    gvar = calloc(1, sizeof(GVar));
     gvar->name = tok->str;
     gvar->len = tok->len;
     gvar->type = type;
     gvar->size = sizeof_parse(type);
+    gvar->is_extern = is_extern;
     return gvar;
 }
 
@@ -1441,7 +1454,9 @@ void program() {
     while(consume(";"));
 
     while(!at_eof()) {
-        tmp = &(*tmp)->next;
+        if (*tmp) {
+            tmp = &(*tmp)->next;
+        }
         globalstmt(tmp);
         while(consume(";"));
     }
@@ -1458,22 +1473,29 @@ void globalstmt(GVar **ptr) {
         }
         strmapset(typenamemap, type->tok->str, type->tok->len, type);
         expect(";");
-        *ptr = calloc(1, sizeof(GVar));
-        (*ptr)->type = calloc(1, sizeof(Type));
-        (*ptr)->type->ty = FUNC;
+        return;
+    }
+    if (consumeTK(TK_EXTERN)) {
+        Type *type = eval_type_all();
+        if (!type || !type->tok) {
+            error("定義がありません %.*s", 20, token->str);
+        }
+        GVar *gvar = init_gvar(type, type->tok, 1);
+        expect(";");
+        *ptr = gvar;
         return;
     }
     Type *type = eval_type_top();
     if (consume(";")) {
-        *ptr = calloc(1, sizeof(GVar));
-        (*ptr)->type = calloc(1, sizeof(Type));
-        (*ptr)->type->ty = FUNC;  // ty == funcでnode == 0なら何も生成しない
         return;
+    }
+    if (!type) {
+        error("type read error %.*s", 20, token->str);
     }
     type = eval_type_ident(type);
     Token *tok = type->tok;
     if (!type || !tok) error_at(token->str, "型が正しくありません");
-    GVar *gvar = init_gvar(type, tok);
+    GVar *gvar = init_gvar(type, tok, 0);
     if (type->ty == FUNC) {
         if (type->ret->ty == STRUCT) {
             error_at(token->str, "structを返す関数は利用できません(unimplemented)");
@@ -1518,7 +1540,6 @@ void globalstmt(GVar **ptr) {
         gvar->offset = max_offset;
         return;
     } else {
-        GVar *gvar = init_gvar(type, tok);
         if (consume("=")) {
             if (gvar->type->ty == ARRAY) {
                 int i = 0;
@@ -1596,7 +1617,11 @@ void globalstmt(GVar **ptr) {
         }
         expect(";");
         gvar->node = calc_node(gvar->node);
-        *ptr = gvar;
+        if (gvar->is_extern) {
+            gvar->is_extern = 0;
+        } else {
+            *ptr = gvar;
+        }
     }
 }
 

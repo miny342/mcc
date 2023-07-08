@@ -10,6 +10,18 @@
 
 #else
 
+#define FILE void
+
+extern FILE *stderr;
+
+int fprintf(FILE *stream, char *fmt, ...);
+int printf(char *fmt, ...);
+void exit(int status);
+
+void *calloc(void *len, void *size);
+
+#define bool char
+
 #define va_start(ap, param) __va_start(ap, &param)
 
 #ifdef va_start

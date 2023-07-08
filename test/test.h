@@ -4,8 +4,6 @@ int (*(*testf(void))[10])(void);
 int c[12][34];
 int (c2[12])[22];
 
-int printf(char *s, ...);
-void exit(int status);
 void print(int i);
 int *alloc4(int a, int b, int c, int d);
 

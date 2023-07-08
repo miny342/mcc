@@ -34,6 +34,11 @@ char **regs(int size) {
 void gen_global() {
     // アセンブリの前半部分を出力
     printf(".intel_syntax noprefix\n");
+
+    // コンパイラのバグ検出用
+    // rspが16の倍数か検証し、そうでない場合exit(2)を呼ぶ
+    printf("__checkrsp:\n  push rdi\n  mov rdi, rsp\n  and rdi, 15\n  test rdi, rdi\n  je .checkrsp\n  mov rdi, 2\n  call exit\n.checkrsp:\n  pop rdi\n  ret\n");
+
     printf(".globl main\n");
 
     GVar *data;
@@ -76,10 +81,13 @@ void gen_global() {
 
     printf(".data\n");
     for(; data; data = data->next) {
-        printf("%.*s:\n", data->len, data->name);
-        int size = data->size - gen_gvar(data->node);
-        if (size > 0) {
-            printf("  .zero %d\n", size);
+        if (!data->is_extern) {
+            printf(".globl %.*s\n", data->len, data->name);
+            printf("%.*s:\n", data->len, data->name);
+            int size = data->size - gen_gvar(data->node);
+            if (size > 0) {
+                printf("  .zero %d\n", size);
+            }
         }
     }
 
@@ -160,19 +168,21 @@ void gen_lval(Node *node) {
 }
 
 int gen_callstack(Node *node, int num) {
-    int i;
+    int use_stack;
     if(node->lhs) {
-        i = gen_callstack(node->rhs, num + 1);
+        use_stack = gen_callstack(node->rhs, num + 1);
         gen(node->lhs);
         printf("  push rax\n");
-        return i;
+        pushcnt++;
+        return use_stack;
     } else {
-        i = num > 6 ? num - 6 : 0;
-        if ((pushcnt + i) & 1) {
+        use_stack = num > 6 ? num - 6 : 0;
+        if ((pushcnt - use_stack) & 1) {
             printf("  sub rsp, 8\n");
-            i += 1;
+            pushcnt++;
+            return use_stack + 1;
         }
-        return i;
+        return use_stack;
     }
 }
 
@@ -181,6 +191,7 @@ void gen_callregister(Node *node) {
     node = node->rhs;
     while(node && num < 6) {
         printf("  pop %s\n", qword_reg[num]);
+        pushcnt--;
         num++;
         node = node->rhs;
     }
@@ -195,12 +206,14 @@ void gen_call(Node *node) {
     if (node->lhs->kind == ND_GVAR) {
         gen_callregister(node->rhs);
         printf("  xor rax, rax\n");
+        printf("  call __checkrsp\n");  // 呼び出し前にrspの検証をする
         printf("  call %.*s\n", node->lhs->gvar->len, node->lhs->gvar->name);
     } else {
         gen(node->lhs);
         gen_callregister(node->rhs);
         printf("  mov r10, rax\n");
         printf("  xor rax, rax\n");
+        printf("  call __checkrsp\n");
         printf("  call r10\n");
     }
     if (stack > 0) {

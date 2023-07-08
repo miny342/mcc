@@ -29,6 +29,7 @@ typedef enum {
     TK_TYPEDEF,  // typedef
     TK_MACRO,    // #
     TK_MACRO_END, // #の後の改行
+    TK_EXTERN,   // extern
 } TokenKind;
 
 typedef struct Token Token;
@@ -120,6 +121,7 @@ struct GVar {
     Node *node; // GVarの初期値またはtype==funcの時の実行ノード
     LVar *locals; // type == func
     int offset;  // type == func
+    int is_extern; // externかどうか
 };
 
 extern GVar *code;

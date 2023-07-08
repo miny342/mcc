@@ -32,7 +32,7 @@ int strmapset(StrMap *map, char *str, int len, void *value) {
 
 void grow(Vec *v) {
     v->cap *= 2;
-    v->data = realloc(v->data, v->cap);
+    v->data = realloc(v->data, v->cap * (sizeof(void*)));
 }
 
 void *at(Vec *v, int i) {
