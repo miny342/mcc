@@ -39,7 +39,7 @@ void gen_global() {
     // rspが16の倍数か検証し、そうでない場合exit(2)を呼ぶ
     printf("__checkrsp:\n  push rdi\n  mov rdi, rsp\n  and rdi, 15\n  test rdi, rdi\n  je .checkrsp\n  mov rdi, 2\n  call exit\n.checkrsp:\n  pop rdi\n  ret\n");
 
-    printf(".globl main\n");
+    // printf(".globl main\n");
 
     GVar *data;
     GVar **tmp = &data;
@@ -47,6 +47,7 @@ void gen_global() {
     for(; code; code = code->next) {
         if (code->type->ty == FUNC && code->node) {
             Type *type = code->type;
+            printf(".globl %.*s\n", code->len, code->name); // TODO: externの物のみにする
             printf("%.*s:\n", code->len, code->name);
 
             // prologue

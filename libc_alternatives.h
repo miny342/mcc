@@ -10,15 +10,37 @@
 
 #else
 
+#define NULL 0
+#define size_t void * // 事実上の64bit整数...
+#define long void *
+
 #define FILE void
 
 extern FILE *stderr;
 
 int fprintf(FILE *stream, char *fmt, ...);
 int printf(char *fmt, ...);
+
+#define SEEK_END 2
+#define SEEK_SET 0
+
+FILE *fopen(char *filename, char *modes);
+int fseek(FILE *stream, long off, long whence);
+long ftell(FILE *stream);
+size_t fread(void *ptr, size_t size, size_t n, FILE *stream);
+int fclose(FILE *stream);
+
+char *strerror(int errnum);
+
+int *__errno_location(void);
+#define errno (*__errno_location())
+
+
 void exit(int status);
 
-void *calloc(void *len, void *size);
+void *calloc(size_t len, size_t size);
+void *realloc(void *ptr, size_t size);
+void *malloc(size_t size);
 
 #define bool char
 

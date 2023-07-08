@@ -66,7 +66,8 @@ char *read_file(char *path) {
     if (fseek(fp, 0, SEEK_END) == -1) {
         error("%s: fseek: %s", path, strerror(errno));
     }
-    size_t size = ftell(fp);
+    // size_t size = ftell(fp);
+    int size = ftell(fp);
     if (fseek(fp, 0, SEEK_SET) == -1) {
         error("%s: fseek: %s", path, strerror(errno));
     }

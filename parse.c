@@ -167,6 +167,9 @@ char read_one_char(char **top) {
         } else if (**top == '\'') {
             (*top)++;
             return '\'';
+        } else if (**top == '0') {
+            (*top)++;
+            return 0;
         } else {
             error_at(*top, "charとして処理できません");
         }
@@ -592,7 +595,7 @@ Token *preprocess() {
             if (tok->len == 6 && !strncmp(tok->str, "define", 6)) {
                 tok = consume_ident();
                 MacroData *data = calloc(1, sizeof(MacroData));
-                if (consume("(")) {
+                if (tok->str[tok->len] == '(' && consume("(")) { // identと(はくっついている必要がある
                     data->args = vec_new();  // 関数マクロかはargsの初期化で見分ける
                     if (!consume(")")) {
                         while(1) {
@@ -1394,6 +1397,11 @@ void show_type(Type *type, int indent) {
         fprintf(stderr, "\n");
         return;
     }
+    if (indent > 100) {
+        fprintf(stderr, "%*sTooLarge\n", indent, "");
+        fprintf(stderr, "\n");
+        return;
+    }
     if(type->tok) {
         fprintf(stderr, "%*sname: %.*s\n", indent, "", type->tok->len, type->tok->str);
     }
@@ -1501,6 +1509,7 @@ void globalstmt(GVar **ptr) {
             error_at(token->str, "structを返す関数は利用できません(unimplemented)");
         }
         if (consume(";")) {
+            gvar->is_extern = 1;
             *ptr = gvar;
             return;
         }
@@ -1531,7 +1540,11 @@ void globalstmt(GVar **ptr) {
             }
             lvar = lvar->next;
         }
-        *ptr = gvar;
+        if (gvar->is_extern) {
+            gvar->is_extern = 0;
+        } else {
+            *ptr = gvar;
+        }
         if (*token->str != '{') {
             error_at(token->str, "{ ではありません");
         }
