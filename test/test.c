@@ -1,4 +1,5 @@
 #include "test/test.h"
+#include "libc_alternatives.h"
 
 assert(t0, {}, 0)
 assert(t1, {return 42;}, 42)

@@ -405,6 +405,19 @@ Token *duplicate_token(Token *tok) {
     return t;
 }
 
+// kindとなるトークンまで読み飛ばし、そのトークンを返す
+// もし存在しないならエラー
+Token *expect_exist(TokenKind kind) {
+    while(token && token->kind != kind) token = token->next;
+    if (token) {
+        Token *tmp = token;
+        token = token->next;
+        return tmp;
+    } else {
+        error("expected %d token kind, but not found", kind);
+    }
+}
+
 // tokenに入ったTokenを処理してTokenを返す
 Token *preprocess() {
     // Token *head = token; // 退避
@@ -420,7 +433,7 @@ Token *preprocess() {
         if (ident) {
             MacroData *data = strmapget(macromap, ident->str, ident->len);
             if (data) {
-                strmapset(macromap, ident->str, ident->len, NULL); // 再帰的な展開を抑えるために一時的に未定義にする
+                strmapset(macromap, ident->str, ident->len, NULL); // 再帰的な展開を抑えるために一時的に未定義にする マクロ内でマクロ宣言などはできなくてよい
                 Token *prev_in_macro;
                 Vec *tmpv = vec_new();
                 if (data->args && consume("(")) {
@@ -652,12 +665,96 @@ Token *preprocess() {
                 filetoken = preprocess();
                 token = now_token;
 
-                prev->next = filetoken;
-                while(filetoken->next) filetoken = filetoken->next;
-                filetoken->next = token;
-                prev = filetoken;
+                if (filetoken) {
+                    prev->next = filetoken;
+                    while(filetoken->next) filetoken = filetoken->next;
+                    filetoken->next = token;
+                    prev = filetoken;
+                }
 
                 continue;
+            } else if (tok->len == 5 && !strncmp(tok->str, "ifdef", 5)) {
+                tok = consume_ident();
+                MacroData *data = strmapget(macromap, tok->str, tok->len);
+                int ifcount = 0;
+                if (token->kind != TK_MACRO_END) {
+                    error("ifdefが正常に終わっていません");
+                }
+                token = token->next;
+                Token *iftok = token; // start
+                Token *elsetok = NULL; // 存在するなら#elseの#を指す
+                Token *endiftok; // #endifの#
+                while(1) {
+                    Token *tmp = expect_exist(TK_MACRO);
+                    tok = consume_ident();
+                    if (!tok) {
+                        if (consumeTK(TK_ELSE)) {
+                            if (ifcount == 0) {
+                                if (elsetok) {
+                                    error("二度目のelseマクロです");
+                                }
+                                if (token->kind != TK_MACRO_END) {
+                                    error("elseマクロが正常に終わっていません");
+                                }
+                                elsetok = tmp;
+                            }
+                            continue;
+                        } else {
+                            error("token %dはidentではありません", tok->kind);
+                        }
+                    }
+                    if (tok->len == 5 && !strncmp(tok->str, "ifdef", 5)) {
+                        ifcount++;
+                    } else if (tok->len == 6 && !strncmp(tok->str, "ifndef", 6)) {
+                        ifcount++;
+                    } else if (tok->len == 5 && !strncmp(tok->str, "endif", 5)) {
+                        if (ifcount > 0) {
+                            ifcount--;
+                        } else {
+                            if (token->kind != TK_MACRO_END) {
+                                error("endifマクロが正常に終わっていません");
+                            }
+                            token = token->next;
+                            endiftok = tmp;
+                            break;
+                        }
+                    }
+                }
+                if (data) {
+                    Token *tmp = iftok;
+                    if (tmp && tmp != elsetok && tmp != endiftok) {
+                        while (tmp->next != elsetok && tmp->next != endiftok) tmp = tmp->next;
+                        tmp->next = NULL;
+                        Token *nowtok = token;
+                        token = iftok;
+                        iftok = preprocess();
+                        token = nowtok;
+                        tmp = iftok;
+                        if (tmp) while (tmp->next) tmp = tmp->next;
+                        prev->next = iftok;
+                        prev = tmp;
+                    }
+                    continue;
+                } else if (elsetok) {
+                    elsetok = elsetok->next->next->next;
+                    Token *tmp = elsetok;
+                    if (tmp && tmp != endiftok) {
+                        while (tmp->next != endiftok) tmp = tmp->next;
+                        tmp->next = NULL;
+                        Token *nowtok = token;
+                        token = elsetok;
+                        elsetok = preprocess();
+                        token = nowtok;
+                        tmp = elsetok;
+                        if (tmp) while (tmp->next) tmp = tmp->next;
+                        prev->next = elsetok;
+                        prev = tmp;
+                    }
+                    continue;
+                } else {
+                    prev->next = token;
+                    continue;
+                }
             } else {
                 error_at(tok->str, "未定義のマクロです");
             }
