@@ -510,14 +510,12 @@ void gen(Node *node) {
             printf("  jmp .L%d\n", continue_label);
             return;
     }
-
-    gen(node->lhs);
+    gen(node->rhs);
     printf("  push rax\n");
     pushcnt += 1;
-    gen(node->rhs);
 
-    printf("  mov rdi, rax\n");
-    printf("  pop rax\n");
+    gen(node->lhs);
+    printf("  pop rdi\n");
     pushcnt -= 1;
     switch(node->kind) {
         case ND_ADD:
