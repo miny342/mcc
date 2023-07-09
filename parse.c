@@ -1011,7 +1011,7 @@ int get_align(Type *type) {
             }
         }
         return max;
-    } else sizeof_parse(type);
+    } else return sizeof_parse(type);
 }
 
 // type.ty == STRUCTでtype.arglen == -1を受け取って初期化する

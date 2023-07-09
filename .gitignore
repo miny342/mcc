@@ -5,3 +5,5 @@ a.out
 mcc
 .vscode/
 *.s
+mcc_gen2
+mcc_gen3
