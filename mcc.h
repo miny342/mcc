@@ -30,6 +30,9 @@ typedef enum {
     TK_MACRO,    // #
     TK_MACRO_END, // #の後の改行
     TK_EXTERN,   // extern
+    TK_SWITCH,   // switch
+    TK_CASE,     // case
+    TK_DEFAULT,  // default
 } TokenKind;
 
 typedef struct Token Token;
@@ -174,6 +177,9 @@ typedef enum {
     ND_BITNOT, // ~
     ND_CONTINUE, // continue
     ND_BREAK, // break
+    ND_SWITCH, // switch
+    ND_CASE,  // case
+    ND_DEFAULT, // default
 } NodeKind;
 
 // 抽象構文木のノードの型

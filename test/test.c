@@ -321,6 +321,23 @@ typedef struct {
     } e;
 } T63;
 assert(t63, {T63 p; p.val = 3; p.s = '\n'; p.e = BETA; return p.val + p.s + p.e;}, 14);
+assert(t64, {
+    int i = 5;
+    switch (i + 1) {
+        case 4:
+            printf("error\n");
+            break;
+        case 6:
+            printf("ok show\n");
+        case 5:
+            printf("this is also show\n");
+            i = 20;
+            break;
+        default:
+            printf("no\n");
+    }
+    return i;
+}, 20)
 
 int a = 1;
 int *d[10] = { &a + 1, &a + 2 };
@@ -339,7 +356,7 @@ int main() {
     t31();t32();t33();t34();t35();t36();t37();t38();t39();t40();
     t41();t42();t43();t44();t45();t46();t47();t48();t49();t50();
     t51();t52();t53();t54();t55();t56();t57();t58();t59();t60();
-    t61();t62();
+    t61();t62();t63();t64();
 
     printf("OK\n");
 }

@@ -228,6 +228,12 @@ Token *tokenize(char *p, int need_eof) {
             continue;
         }
 
+        if (strncmp(p, "default", 7) == 0 && !is_alnum(p[7])) {
+            cur = new_token(TK_DEFAULT, cur, p, 7);
+            p += 7;
+            continue;
+        }
+
         if (strncmp(p, "return", 6) == 0 && !is_alnum(p[6])) {
             cur = new_token(TK_RETURN, cur, p, 6);
             p += 6;
@@ -248,6 +254,12 @@ Token *tokenize(char *p, int need_eof) {
 
         if (strncmp(p, "extern", 6) == 0 && !is_alnum(p[6])) {
             cur = new_token(TK_EXTERN, cur, p, 6);
+            p += 6;
+            continue;
+        }
+
+        if (strncmp(p, "switch", 6) == 0 && !is_alnum(p[6])) {
+            cur = new_token(TK_SWITCH, cur, p, 6);
             p += 6;
             continue;
         }
@@ -284,6 +296,12 @@ Token *tokenize(char *p, int need_eof) {
 
         if (strncmp(p, "enum", 4) == 0 && !is_alnum(p[4])) {
             cur = new_token(TK_ENUM, cur, p, 4);
+            p += 4;
+            continue;
+        }
+
+        if (strncmp(p, "case", 4) == 0 && !is_alnum(p[4])) {
+            cur = new_token(TK_CASE, cur, p, 4);
             p += 4;
             continue;
         }
@@ -1704,6 +1722,41 @@ Node *stmt() {
     } else if(consumeTK(TK_CONTINUE)) {
         node = new_node(ND_CONTINUE, NULL, NULL, NULL);
         expect(";");
+    } else if(consumeTK(TK_SWITCH)) {
+        LVar *now_locals = locals;
+        node = new_node(ND_SWITCH, NULL, NULL, NULL);
+        expect("(");
+        node->lhs = assign();
+        expect(")");
+        expect("{");
+        Node **ptr = &node->rhs;
+        Vec *v = vec_new();
+        while(1) {
+            if (consumeTK(TK_CASE)) {
+                int c = calc(assign());
+                expect(":");
+                for (int i = 0; i < v->len; i++) {
+                    if (v->data[i] == c) {
+                        error_at(token->str, "このcaseの数値はすでに使われています");
+                    }
+                }
+                push(v, c);
+                *ptr = new_node(ND_CASE, new_node_num(c), NULL, NULL);
+                ptr = &(*ptr)->rhs;
+            } else if (consumeTK(TK_DEFAULT)) {
+                expect(":");
+                *ptr = new_node(ND_DEFAULT, NULL, NULL, NULL);
+                ptr = &(*ptr)->rhs;
+            } else if (consume("}")) {
+                break;
+            } else {
+                *ptr = new_node(ND_SWITCH, stmt(), NULL, NULL);
+                ptr = &(*ptr)->rhs;
+            }
+        }
+        free(v->data);
+        free(v);
+        locals = now_locals;
     } else if (consume(";")) {
         return node;
     } else {
@@ -1723,7 +1776,6 @@ Node *expr() {
         type = eval_type_ident(type);
     }
     if(type) {
-        show_type(type, 0);
         LVar *lvar = init_lvar(type);
         Node *node = NULL;
         if (consume("=")) {

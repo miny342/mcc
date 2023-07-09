@@ -223,6 +223,55 @@ void gen_call(Node *node) {
     }
 }
 
+// ジャンプするアセンブリを吐きながら必要なラベル数を返す
+int gen_switch_top(Node *node) {
+    int needlabel = 0;
+    int defaultlabel = 0;
+    while(node) {
+        if (node->kind == ND_CASE) {
+            printf("  cmp rax, %d\n", node->lhs->val);
+            printf("  je .L%d\n", labelcnt + needlabel);
+            needlabel++;
+        } else if (node->kind == ND_DEFAULT) {
+            defaultlabel = labelcnt + needlabel;
+            needlabel++;
+        }
+        node = node->rhs;
+    }
+    if (defaultlabel) {
+        printf("  jmp .L%d\n", defaultlabel);
+    } else {
+        printf("  jmp .L%d\n", labelcnt + needlabel);
+    }
+    needlabel++;
+    return needlabel;
+}
+
+void gen_switch(Node *node) {
+    if (node->kind != ND_SWITCH) {
+        error("switchではありません");
+    }
+    gen(node->lhs);
+    int needlabel = gen_switch_top(node->rhs);
+    int tmp_label = labelcnt;
+    labelcnt += needlabel;
+    int now_break_label = break_label;
+    break_label = labelcnt - 1;
+
+    node = node->rhs;
+    while(node) {
+        if (node->kind == ND_CASE || node->kind == ND_DEFAULT) {
+            printf(".L%d:\n", tmp_label);
+            tmp_label++;
+        } else {
+            gen(node->lhs);
+        }
+        node = node->rhs;
+    }
+    printf(".L%d:\n", break_label);
+    break_label = now_break_label;
+}
+
 // nodeからアセンブリを吐く
 // raxに結果を残す
 void gen(Node *node) {
@@ -508,6 +557,9 @@ void gen(Node *node) {
                 labelcnt += 1;
             }
             printf("  jmp .L%d\n", continue_label);
+            return;
+        case ND_SWITCH:
+            gen_switch(node);
             return;
     }
     gen(node->rhs);
