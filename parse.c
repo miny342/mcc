@@ -1661,8 +1661,10 @@ Node *stmt() {
     if(consumeTK(TK_RETURN)) {
         node = calloc(1, sizeof(Node));
         node->kind = ND_RETURN;
-        node->lhs = assign();
-        expect(";");
+        if (!consume(";")) {
+            node->lhs = assign();
+            expect(";");
+        }
     } else if (consumeTK(TK_IF)) {
         node = calloc(1, sizeof(Node));
         node->kind = ND_IF;
@@ -1768,85 +1770,92 @@ Node *stmt() {
 
 // (int | char) indent ([number])? (= assign | )? | assign
 Node *expr() {
-    Type *type = eval_type_top();
+    Type *top = eval_type_top();
     if (*token->str == ';') {
         return new_node(ND_DECLARATION, NULL, NULL, NULL);
     }
-    if (type) {
-        type = eval_type_ident(type);
-    }
-    if(type) {
-        LVar *lvar = init_lvar(type);
-        Node *node = NULL;
-        if (consume("=")) {
-            if (lvar->type->ty == ARRAY) {
-                Node *ptr_node = calloc(1, sizeof(Node));
-                ptr_node->kind = ND_LVAR;
-                ptr_node->lvar = lvar;
+    Node *top_node = NULL;
+    Type *type = NULL;
+    do {
+        if (top) {
+            type = eval_type_ident(top);
+        }
+        if(type) {
+            LVar *lvar = init_lvar(type);
+            Node *node = NULL;
+            if (consume("=")) {
+                if (lvar->type->ty == ARRAY) {
+                    Node *ptr_node = calloc(1, sizeof(Node));
+                    ptr_node->kind = ND_LVAR;
+                    ptr_node->lvar = lvar;
 
-                ptr_node->type = calloc(1, sizeof(Type));
-                ptr_node->type->ty = PTR;
-                ptr_node->type->ptr_to = lvar->type->ptr_to;
+                    ptr_node->type = calloc(1, sizeof(Type));
+                    ptr_node->type->ty = PTR;
+                    ptr_node->type->ptr_to = lvar->type->ptr_to;
 
-                ptr_node = new_node(ND_ADDR, ptr_node, NULL, ptr_node->type);
-                ptr_node->lvar = lvar;
+                    ptr_node = new_node(ND_ADDR, ptr_node, NULL, ptr_node->type);
+                    ptr_node->lvar = lvar;
 
-                int i = 0;
-                if (consume("{")) {
-                    if (!consume("}")) {
-                        while(1) {
-                            node = block_node(assign_node(deref_node(add_node(ptr_node, new_node_num(i++))), assign()), node);
-                            if (consume("}")) break;
-                            expect(",");
+                    int i = 0;
+                    if (consume("{")) {
+                        if (!consume("}")) {
+                            while(1) {
+                                node = block_node(assign_node(deref_node(add_node(ptr_node, new_node_num(i++))), assign()), node);
+                                if (consume("}")) break;
+                                expect(",");
+                            }
+                            if (lvar->type->array_size != -1) {
+                                for(; i < lvar->type->array_size; i++) {
+                                    node = block_node(assign_node(deref_node(add_node(ptr_node, new_node_num(i))), new_node_num(0)), node);
+                                }
+                                if (i > lvar->type->array_size) {
+                                    error_at(token->str, "配列が長すぎます");
+                                }
+                            } else {
+                                assign_lvar_arr(lvar, i);
+                            }
+                        } else {
+                            if (lvar->type->array_size != -1) {
+                                for(i = 0; i < lvar->type->array_size; i++) {
+                                    node = block_node(assign_node(deref_node(add_node(ptr_node, new_node_num(i))), new_node_num(0)), node);
+                                }
+                            } else {
+                                assign_lvar_arr(lvar, 0);
+                            }
                         }
+                    } else if (token->kind == TK_STR) {
+                        char *p = token->str + 1;
+                        for (; *p != '"'; i++) {
+                            node = block_node(assign_node(deref_node(add_node(ptr_node, new_node_num(i))), new_node_num(read_one_char(&p))), node);
+                        }
+                        node = block_node(assign_node(deref_node(add_node(ptr_node, new_node_num(i++))), new_node_num(0)), node);
                         if (lvar->type->array_size != -1) {
-                            for(; i < lvar->type->array_size; i++) {
+                            for (; i < lvar->type->array_size; i++) {
                                 node = block_node(assign_node(deref_node(add_node(ptr_node, new_node_num(i))), new_node_num(0)), node);
                             }
                             if (i > lvar->type->array_size) {
-                                error_at(token->str, "配列が長すぎます");
+                                error_at(p, "文字列が長すぎます");
                             }
                         } else {
                             assign_lvar_arr(lvar, i);
                         }
+                        token = token->next;
                     } else {
-                        if (lvar->type->array_size != -1) {
-                            for(i = 0; i < lvar->type->array_size; i++) {
-                                node = block_node(assign_node(deref_node(add_node(ptr_node, new_node_num(i))), new_node_num(0)), node);
-                            }
-                        } else {
-                            assign_lvar_arr(lvar, 0);
-                        }
+                        error_at(token->str, "unexpected token");
                     }
-                } else if (token->kind == TK_STR) {
-                    char *p = token->str + 1;
-                    for (; *p != '"'; i++) {
-                        node = block_node(assign_node(deref_node(add_node(ptr_node, new_node_num(i))), new_node_num(read_one_char(&p))), node);
-                    }
-                    node = block_node(assign_node(deref_node(add_node(ptr_node, new_node_num(i++))), new_node_num(0)), node);
-                    if (lvar->type->array_size != -1) {
-                        for (; i < lvar->type->array_size; i++) {
-                            node = block_node(assign_node(deref_node(add_node(ptr_node, new_node_num(i))), new_node_num(0)), node);
-                        }
-                        if (i > lvar->type->array_size) {
-                            error_at(p, "文字列が長すぎます");
-                        }
-                    } else {
-                        assign_lvar_arr(lvar, i);
-                    }
-                    token = token->next;
                 } else {
-                    error_at(token->str, "unexpected token");
+                    node = new_node(ND_ASSIGN, lvar_node(lvar), assign(), lvar->type);
                 }
-            } else {
-                node = new_node(ND_ASSIGN, lvar_node(lvar), assign(), lvar->type);
             }
+            if (type->array_size == -1) {
+                error_at(token->str, "配列の初期化ができません");
+            }
+            locals = lvar;
+            top_node = new_node(ND_DECLARATION, node, top_node, NULL);
         }
-        if (type->array_size == -1) {
-            error_at(token->str, "配列の初期化ができません");
-        }
-        locals = lvar;
-        return new_node(ND_DECLARATION, node, NULL, NULL);
+    } while (consume(","));
+    if (top_node) {
+        return top_node;
     }
     return assign();
 }
