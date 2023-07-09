@@ -2,6 +2,7 @@
 #define min(x, y) ((x) <= (y) ? (x) : (y))
 
 char *byte_reg[] = {"dil", "sil", "dl", "cl", "r8b", "r9b"};
+char *word_reg[] = {"di", "si", "dx", "cx", "r8w", "r9w"};
 char *dword_reg[] = {"edi", "esi", "edx", "ecx", "r8d", "r9d"};
 char *qword_reg[] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
 
@@ -9,6 +10,8 @@ char *ptr_name(int size) {
     switch (size) {
         case 1:
             return "byte ptr";
+        case 2:
+            return "word ptr";
         case 4:
             return "dword ptr";
         case 8:
@@ -22,6 +25,8 @@ char **regs(int size) {
     switch (size) {
         case 1:
             return byte_reg;
+        case 2:
+            return word_reg;
         case 4:
             return dword_reg;
         case 8:
@@ -41,6 +46,10 @@ void gen_global() {
 
     // printf(".globl main\n");
 
+    // va_startに対応する
+    // とりあえず可変長引数の始まりがレジスタの場合に
+    printf("__va_start:\n  mov rax, rbp\n  sub rax, rsi\n  mov rsi, 56\n  sub rsi, rax\n  mov dword ptr [rdi], esi\n  mov dword ptr [rdi+4], 0\n  lea rax, [rbp+16]\n  mov qword ptr [rdi+8], rax\n  lea rax, [rbp-48]\n  mov qword ptr [rdi+16], rax\n  ret\n");
+
     GVar *data;
     GVar **tmp = &data;
 
@@ -58,13 +67,18 @@ void gen_global() {
             if (sub > 0)
                 printf("  sub rsp, %d\n", sub);
 
-            Type *args = type->args;
-            int offset = 0;
-            for(int i = 0; i < 6 && i < type->arglen; i++) {
-                int size = sizeof_parse(args);
-                offset = calc_aligned(offset, args);
-                printf("  mov %s [rbp-%d], %s\n", ptr_name(size), offset, regs(size)[i]);
-                args = args->args;
+            Vec *args = type->args;
+            int argnum = args->len;
+            if (argnum > 0) {
+                Type *ty = args->data[argnum - 1];
+                if (ty->ty == VA_ARGS || argnum > 6) {
+                    argnum = 6;
+                }
+            }
+            int offset = argnum * 8;
+            for(int i = 0; i < argnum; i++) {
+                printf("  mov qword ptr [rbp-%d], %s\n", offset, qword_reg[i]);
+                offset -= 8;
             }
 
             gen(code->node);
@@ -112,8 +126,10 @@ int gen_gvar(Node *node) {
                     printf("  .quad");
                 } else if (size == 4) {
                     printf("  .long");
-                } else {
+                } else if (size == 8) {
                     printf("  .byte");
+                } else if (size == 2) {
+                    printf("  .value");
                 }
                 i += gen_gvar(node->lhs);
                 printf("\n");
@@ -297,8 +313,12 @@ void gen(Node *node) {
                 printf("  movsx rax, dword ptr [rax]\n");
             } else if (size == 1) {
                 printf("  movzx rax, byte ptr [rax]\n");
-            } else {
+            } else if (size == 8) {
                 printf("  mov rax, qword ptr [rax]\n");
+            } else if (size == 2) {
+                printf("  movsx rax, word ptr [rax]\n");
+            } else {
+                error("no reg size %d", size);
             }
             return;
         case ND_ASSIGN:
@@ -314,8 +334,12 @@ void gen(Node *node) {
                 printf("  mov dword ptr [rdi], eax\n");
             } else if (size == 1) {
                 printf("  mov byte ptr [rdi], al\n");
-            } else {
+            } else if (size == 8) {
                 printf("  mov qword ptr [rdi], rax\n");
+            } else if (size == 2) {
+                printf("  mov word ptr [rdi], ax\n");
+            } else {
+                error("no reg size %d", size);
             }
             return;
         case ND_WHILE:
@@ -398,8 +422,12 @@ void gen(Node *node) {
                 printf("  movsx rax, dword ptr [rax]\n");
             } else if (size == 1) {
                 printf("  movzx rax, byte ptr [rax]\n");
-            } else {
+            } else if (size == 8) {
                 printf("  mov rax, qword ptr [rax]\n");
+            } else if (size == 2) {
+                printf("  movsx rax, word ptr [rax]\n");
+            } else {
+                error("no reg size %d", size);
             }
             return;
         case ND_GVAR:
@@ -412,8 +440,12 @@ void gen(Node *node) {
                 printf("  movsx rax, dword ptr [rax]\n");
             } else if (size == 1) {
                 printf("  movzx rax, byte ptr [rax]\n");
-            } else {
+            } else if (size == 8) {
                 printf("  mov rax, qword ptr [rax]\n");
+            } else if (size == 2) {
+                printf("  movsx rax, word ptr [rax]\n");
+            } else {
+                error("no reg size %d", size);
             }
             return;
         case ND_STR:
@@ -474,9 +506,14 @@ void gen(Node *node) {
                     } else if (size == 4) {
                         printf("  add dword ptr [rax], 1\n");
                         printf("  movsx rax, dword ptr [rax]\n");
-                    } else {
+                    } else if (size == 8) {
                         printf("  add qword ptr [rax], 1\n");
                         printf("  mov rax, qword ptr [rax]\n");
+                    } else if (size == 2) {
+                        printf("  add word ptr [rax], 1\n");
+                        printf("  movsx rax, word ptr [rax]\n");
+                    } else {
+                        error("no reg size %d", size);
                     }
                 }
             } else {
@@ -492,9 +529,14 @@ void gen(Node *node) {
                     } else if (size == 4) {
                         printf("  movsx rdi, dword ptr [rax]\n");
                         printf("  add dword ptr [rax], 1\n");
-                    } else {
+                    } else if (size == 8) {
                         printf("  mov rdi, qword ptr [rax]\n");
                         printf("  add qword ptr [rax], 1\n");
+                    } else if (size == 2) {
+                        printf("  movsx rdi, word ptr [rax]\n");
+                        printf("  add word ptr [rax], 1\n");
+                    } else {
+                        error("no reg size %d", size);
                     }
                 }
                 printf("  mov rax, rdi\n");
@@ -514,9 +556,14 @@ void gen(Node *node) {
                     } else if (size == 4) {
                         printf("  sub dword ptr [rax], 1\n");
                         printf("  movsx rax, dword ptr [rax]\n");
-                    } else {
+                    } else if (size == 8) {
                         printf("  sub qword ptr [rax], 1\n");
                         printf("  mov rax, qword ptr [rax]\n");
+                    } else if (size == 2) {
+                        printf("  sub word ptr [rax], 1\n");
+                        printf("  movsx rax, word ptr [rax]\n");
+                    } else {
+                        error("no reg size %d", size);
                     }
                 }
             } else {
@@ -532,9 +579,14 @@ void gen(Node *node) {
                     } else if (size == 4) {
                         printf("  movsx rdi, dword ptr [rax]\n");
                         printf("  sub dword ptr [rax], 1\n");
-                    } else {
+                    } else if (size == 8) {
                         printf("  mov rdi, qword ptr [rax]\n");
                         printf("  sub qword ptr [rax], 1\n");
+                    } else if (size == 2) {
+                        printf("  movsx rdi, word ptr [rax]\n");
+                        printf("  sub word ptr [rax], 1\n");
+                    } else {
+                        error("no reg size %d", size);
                     }
                 }
                 printf("  mov rax, rdi\n");

@@ -47,7 +47,7 @@ int main(int argc, char **argv){
 
     token = preprocess();
 
-    print_token(token);
+    // print_token(token);
 
     // type_test();
 

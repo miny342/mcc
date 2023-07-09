@@ -34,6 +34,7 @@ typedef enum {
     TK_CASE,     // case
     TK_DEFAULT,  // default
     TK_DO,       // do
+    TK_SHORT,    // short
 } TokenKind;
 
 typedef struct Token Token;
@@ -90,12 +91,12 @@ struct Type {
         VA_ARGS, // ...
         VOID,
         STRUCT,
+        SHORT,
     } ty;
     Type *ptr_to;
     int array_size;
     Type *ret; // ty == FUNCの時の返り値
-    Type *args; // ty == FUNCの時の引数の列
-    int arglen; // ty == FUNCの時の引数の数
+    Vec *args; // ty == FUNCの時の引数
     Token *tok; // argsや構造体の名前など
     int offset; // ty == STRUCTの時のoffset
     Vec *fields; // ty == STRUCTの時のフィールド

@@ -17,6 +17,7 @@
 
 #define FILE void
 
+extern FILE *stdout;
 extern FILE *stderr;
 
 int fprintf(FILE *stream, char *fmt, ...);
@@ -64,8 +65,8 @@ enum
 };
 
 // ほんとはshort int**
-int **__ctype_b_loc(void);
-#define __isctype(c, type) ((*__ctype_b_loc())[(int)(c)] & (int) type)
+short **__ctype_b_loc(void);
+#define __isctype(c, type) ((*__ctype_b_loc())[(int)(c)] & (short) type)
 #define isalnum(c)	__isctype((c), _ISalnum)
 #define isalpha(c)	__isctype((c), _ISalpha)
 #define iscntrl(c)	__isctype((c), _IScntrl)

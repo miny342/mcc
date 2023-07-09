@@ -283,6 +283,12 @@ Token *tokenize(char *p, int need_eof) {
             continue;
         }
 
+        if (strncmp(p, "short", 5) == 0 && !is_alnum(p[5])) {
+            cur = new_token(TK_SHORT, cur, p, 5);
+            p += 5;
+            continue;
+        }
+
         if (strncmp(p, "else", 4) == 0 && !is_alnum(p[4])) {
             cur = new_token(TK_ELSE, cur, p, 4);
             p += 4;
@@ -970,6 +976,8 @@ int sizeof_parse(Type *type) {
         return type->array_size * sizeof_parse(type->ptr_to);
     else if (type->ty == CHAR || type->ty == VOID || type->ty == FUNC)
         return sizeof(char);
+    else if (type->ty == SHORT)
+        return sizeof(short);
     else if (type->ty == STRUCT) {
         if (!type->fields) {
             error("sizeofをフィールド不明な構造体に適用できません");
@@ -1015,7 +1023,6 @@ Type *def_struct(Type *type) {
     if (type->fields) {
         error_at(token->str, "定義済みです");
     }
-    int arglen = 0;
     Type *args = type;
     int offset = 0;
     type->fields = vec_new();
@@ -1037,7 +1044,6 @@ Type *def_struct(Type *type) {
             if (consume("}")) break;
         }
     }
-    type->arglen = arglen;
     return type;
 }
 
@@ -1119,17 +1125,22 @@ Type *eval_type_acc(Token **ident, Type **bottom) {
                 }
             }
             btm_->ty = FUNC;
-            Type **args = &btm_->args;
+            Type *arg;
+            btm_->args = vec_new();
             if (!consume(")")) {
                 // 引数を読む
                 while(1) {
-                    *args = eval_type_all();
-                    btm_->arglen += 1;
-                    if (!(*args)) error_at(token->str, "型として処理できません");
-                    if ((*args)->ty == STRUCT) error_at(token->str, "関数の引数に構造体は渡せません(unimplemented)");
-                    if ((*args)->ty == ARRAY) (*args)->ty = PTR; // 関数の引数ではint a[10]などはすべてポインタとする
-                    if ((*args)->ty == VA_ARGS || !consume(",")) break;
-                    args = &(*args)->args;
+                    arg = eval_type_all();
+                    if (!arg) error_at(token->str, "型として処理できません");
+                    if (arg->ty == STRUCT) error_at(token->str, "関数の引数に構造体は渡せません(unimplemented)");
+                    if (arg->ty == ARRAY) {
+                        Type *tmp = arg;
+                        arg = malloc(sizeof(Type));
+                        memcpy(arg, tmp, sizeof(Type));
+                        arg->ty = PTR; // 関数の引数ではint a[10]などはすべてポインタとする
+                    }
+                    push(btm_->args, arg);
+                    if (arg->ty == VA_ARGS || !consume(",")) break;
                 }
                 expect(")");
             }
@@ -1210,6 +1221,9 @@ Type *eval_type_top() {
     } else if (consumeTK(TK_CHAR)) {
         type = calloc(1, sizeof(Type));
         type->ty = CHAR;
+    } else if (consumeTK(TK_SHORT)) {
+        type = calloc(1, sizeof(Type));
+        type->ty = SHORT;
     } else if (consume("...")) {
         type = calloc(1, sizeof(Type));
         type->ty = VA_ARGS;
@@ -1458,9 +1472,9 @@ void show_type(Type *type, int indent) {
         show_type(type->ptr_to, indent + 2);
     } else if (type->ty == FUNC) {
         fprintf(stderr, "%*sargs:\n", indent + 2, "");
-        Type *t = type->args;
-        for(; t; t = t->args) {
-            show_type(t, indent + 4);
+        Vec *t = type->args;
+        for(int i = 0; i < t->len; i++) {
+            show_type(t->data[i], indent + 4);
         }
         fprintf(stderr, "%*sreturn:\n", indent + 2, "");
         show_type(type->ret, indent + 4);
@@ -1561,27 +1575,31 @@ void globalstmt(GVar **ptr) {
         locals = NULL;
         max_offset = 0;
 
-        Type *args = type->args;
-        while (args) {
-            if (args->ty == VA_ARGS) {
-                break;
+        Vec *args = type->args;
+        LVar *lvar;
+        int reg_arglen = args->len > 6 ? 6 : args->len;
+        for (int i = args->len - 1; i >= 0; i--) {
+            Type *arg = args->data[i];
+            if (arg->ty == VA_ARGS) {
+                if (reg_arglen < 6) {
+                    reg_arglen = 6;
+                }
+                for (int j = 0; j < 7 - i; j++) {
+                    lvar = calloc(1, sizeof(LVar));
+                    lvar->next = locals;
+                    locals = lvar;
+                }
+            } else {
+                lvar = init_lvar(arg);
+                locals = lvar;
             }
-            LVar *lvar = init_lvar(args);
-            locals = lvar;
-            args = args->args;
         }
-        LVar *tmp = locals;
-        LVar *lvar = locals;
-        for(int i = type->arglen; i > 6; i--) {
-            if (i > 6) {
-                lvar->offset = (5 - i) * 8;
-            }
-            if (i == 7) {
-                locals = lvar->next;
-                lvar->next = NULL;
-                for(lvar = locals; lvar->next; lvar = lvar->next);
-                lvar->next = tmp;
-                break;
+        lvar = locals;
+        for (int i = 0; i < args->len; i++) {
+            if (i >= 6) {
+                lvar->offset = (4 - i) * 8;
+            } else {
+                lvar->offset = (reg_arglen - i) * 8;
             }
             lvar = lvar->next;
         }
