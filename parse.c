@@ -338,6 +338,12 @@ Token *tokenize(char *p, int need_eof) {
             continue;
         }
 
+        if (strncmp(p, "do", 2) == 0 && !is_alnum(p[2])) {
+            cur = new_token(TK_DO, cur, p, 2);
+            p += 2;
+            continue;
+        }
+
         if (strncmp(p, "//", 2) == 0) {
             while(*p && *p != '\n') {
                 p++;
@@ -1788,6 +1794,15 @@ Node *stmt() {
         free(v->data);
         free(v);
         locals = now_locals;
+    } else if (consumeTK(TK_DO)) {
+        node = new_node(ND_DO, NULL, stmt(), NULL);
+        if (!consumeTK(TK_WHILE)) {
+            error_at(token->str, "whileがありません");
+        }
+        expect("(");
+        node->lhs = assign();
+        expect(")");
+        expect(";");
     } else if (consume(";")) {
         return node;
     } else {

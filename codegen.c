@@ -561,6 +561,22 @@ void gen(Node *node) {
         case ND_SWITCH:
             gen_switch(node);
             return;
+        case ND_DO:
+            loopval = labelcnt;
+            labelcnt += 2;
+            blabel = break_label;
+            clabel = continue_label;
+            break_label = loopval + 1;
+            continue_label = loopval;
+            printf(".L%d:\n", loopval);
+            gen(node->rhs);
+            gen(node->lhs);
+            printf("  cmp rax, 0\n");
+            printf("  jne .L%d\n", loopval);
+            printf(".L%d:\n", loopval + 1);
+            break_label = blabel;
+            continue_label = clabel;
+            return;
     }
     gen(node->rhs);
     printf("  push rax\n");

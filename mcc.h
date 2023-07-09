@@ -33,6 +33,7 @@ typedef enum {
     TK_SWITCH,   // switch
     TK_CASE,     // case
     TK_DEFAULT,  // default
+    TK_DO,       // do
 } TokenKind;
 
 typedef struct Token Token;
@@ -180,6 +181,7 @@ typedef enum {
     ND_SWITCH, // switch
     ND_CASE,  // case
     ND_DEFAULT, // default
+    ND_DO,  // do
 } NodeKind;
 
 // 抽象構文木のノードの型
