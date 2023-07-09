@@ -1,7 +1,7 @@
 #include "mcc.h"
 
 // topのマップのvalueはローカルへのマップ
-void *strmapget(StrMap *map, char *str, int len) {
+void *strmapget(StrMap *map, unsigned char *str, int len) {
     if (!(map && len)) return NULL;
     StrMap *p = map;
     for(int i = 0; i < len; i++) {
@@ -17,7 +17,7 @@ void *strmapget(StrMap *map, char *str, int len) {
     }
 }
 
-int strmapset(StrMap *map, char *str, int len, void *value) {
+int strmapset(StrMap *map, unsigned char *str, int len, void *value) {
     if (!(map && len)) return 0;
     StrMap *p = map;
     for(int i = 0; i < len; i++) {

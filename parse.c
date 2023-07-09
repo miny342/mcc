@@ -264,6 +264,13 @@ Token *tokenize(char *p, int need_eof) {
             continue;
         }
 
+        if (strncmp(p, "static", 6) == 0 && !is_alnum(p[6])) {
+            // cur = new_token(TK_SWITCH, cur, p, 6);
+            // TODO: いつか対応する
+            p += 6;
+            continue;
+        }
+
         if (strncmp(p, "while", 5) == 0 && !is_alnum(p[5])) {
             cur = new_token(TK_WHILE, cur, p, 5);
             p += 5;
@@ -599,11 +606,13 @@ Token *preprocess() {
                     strmapset(macromap, ident->str, ident->len, data);
                     continue;
                 } else {
+                    prev->next = ident;
                     prev = ident;
                     token = ident->next;
                     continue;
                 }
             } else {
+                prev->next = ident;
                 prev = ident;
                 token = ident->next;
                 continue;
@@ -860,6 +869,18 @@ Node *calc_node(Node *node) {
             return new_node_num(!l);
         case ND_BITNOT:
             return new_node_num(~l);
+        case ND_IF:
+            if (node->rhs->kind == ND_ELSE) {
+                if (l) {
+                    if (node->rhs->lhs->kind == ND_NUM) {
+                        return node->rhs->lhs;
+                    }
+                } else {
+                    if (node->rhs->rhs->kind == ND_NUM) {
+                        return node->rhs->rhs;
+                    }
+                }
+            }
     }
 
     if (!node->rhs || node->rhs->kind != ND_NUM) {
@@ -1606,11 +1627,10 @@ void globalstmt(GVar **ptr) {
                     }
                     gvar->node = node;
                 } else if (token->kind == TK_STR) {
-                    int i = 0;
                     char *p = token->str + 1;
                     node = calloc(1, sizeof(Node));
                     node->kind = ND_BLOCK;
-                    Node *now = node;
+                    now = node;
                     for(; *p != '\"'; i++) {
                         now->lhs = calloc(1, sizeof(Node));
                         now->lhs->kind = ND_NUM;
@@ -1637,6 +1657,15 @@ void globalstmt(GVar **ptr) {
                 } else {
                     error_at(token->str, "unimplemented");
                 }
+            } else if (gvar->type->ty == STRUCT) {
+                expect("{");
+                Node *node = NULL;
+                while(1) {
+                    node = block_node(assign(), node);
+                    if (!consume(",")) break;
+                }
+                expect("}");
+                gvar->node = node;
             } else {
                 gvar->node = calloc(1, sizeof(Node));
                 gvar->node->lhs = assign();
@@ -2075,26 +2104,26 @@ Node *add() {
     }
 }
 
-// unary ( * unary | / unary | % unary )*
+// cast ( * cast | / cast | % cast )*
 Node *mul() {
-    Node *node = unary();
+    Node *node = cast();
     Node *right;
 
     for(;;) {
         if (consume("*")) {
-            right = unary();
+            right = cast();
             if (is_ptr_or_array(node) || is_ptr_or_array(right))
                 error_at(token->str, "ptr * ptr is not defined");
             node = new_node(ND_MUL, node, right, &int_type);
         }
         else if (consume("/")) {
-            right = unary();
+            right = cast();
             if (is_ptr_or_array(node) || is_ptr_or_array(right))
                 error_at(token->str, "ptr / ptr is not defined");
             node = new_node(ND_DIV, node, right, &int_type);
         }
         else if (consume("%")) {
-            right = unary();
+            right = cast();
             if (is_ptr_or_array(node) || is_ptr_or_array(right))
                 error_at(token->str, "ptr %% ptr is not defined");
             node = new_node(ND_REMINDER, node, right, &int_type);
@@ -2102,6 +2131,23 @@ Node *mul() {
         else
             return node;
     }
+}
+
+// (type)? cast | unary
+Node *cast() {
+    Node *node;
+    Token *tmp = token;
+    if (consume("(")) {
+        Type *ty = eval_type_all();
+        if (ty) {
+            expect(")");
+            node = cast();
+            node->type = ty;
+            return node;
+        }
+        token = tmp;
+    }
+    return unary();
 }
 
 // primary (("[" assign "]")* | "(" assign,* ")" | ++ | -- )  |  ("*" | "&" | + | - | ! | ~) unary  |  sizeof unary

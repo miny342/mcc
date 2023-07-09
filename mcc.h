@@ -219,6 +219,7 @@ Node *relational();
 Node *shift();
 Node *add();
 Node *mul();
+Node *cast();
 Node *unary();
 Node *primary();
 
@@ -241,8 +242,8 @@ struct StrMap {
     void *value;
 };
 
-void *strmapget(StrMap *map, char *str, int len);
-int strmapset(StrMap *map, char *str, int len, void *value);
+void *strmapget(StrMap *map, unsigned char *str, int len);
+int strmapset(StrMap *map, unsigned char *str, int len, void *value);
 
 extern StrMap *strmap;
 extern StrMap *structmap;
