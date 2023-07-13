@@ -36,6 +36,21 @@ char **regs(int size) {
     }
 }
 
+char *acc_regs(int size) {
+    switch (size) {
+        case 1:
+            return "al";
+        case 2:
+            return "ax";
+        case 4:
+            return "eax";
+        case 8:
+            return "rax";
+        default:
+            error("regs is not implemented %d\n", size);
+    }
+}
+
 void gen_global() {
     // アセンブリの前半部分を出力
     printf(".intel_syntax noprefix\n");
@@ -126,7 +141,7 @@ int gen_gvar(Node *node) {
                     printf("  .quad");
                 } else if (size == 4) {
                     printf("  .long");
-                } else if (size == 8) {
+                } else if (size == 1) {
                     printf("  .byte");
                 } else if (size == 2) {
                     printf("  .value");
@@ -288,6 +303,21 @@ void gen_switch(Node *node) {
     break_label = now_break_label;
 }
 
+// raxをアドレスとみて読む
+void gen_load_addr(int size) {
+    if (size == 8) {
+        printf("  mov rax, qword ptr [rax]\n");
+    } else if (size == 4) {
+        printf("  movsx rax, dword ptr [rax]\n");
+    } else if (size == 2) {
+        printf("  movsx rax, word ptr [rax]\n");
+    } else if (size == 1) {
+        printf("  movzx rax, byte ptr [rax]\n");
+    } else {
+        error("no reg size %d", size);
+    }
+}
+
 // nodeからアセンブリを吐く
 // raxに結果を残す
 void gen(Node *node) {
@@ -309,17 +339,7 @@ void gen(Node *node) {
                 return;
             }
             size = sizeof_parse(node->lvar->type);
-            if (size == 4) {
-                printf("  movsx rax, dword ptr [rax]\n");
-            } else if (size == 1) {
-                printf("  movzx rax, byte ptr [rax]\n");
-            } else if (size == 8) {
-                printf("  mov rax, qword ptr [rax]\n");
-            } else if (size == 2) {
-                printf("  movsx rax, word ptr [rax]\n");
-            } else {
-                error("no reg size %d", size);
-            }
+            gen_load_addr(size);
             return;
         case ND_ASSIGN:
             gen_lval(node->lhs);
@@ -418,17 +438,7 @@ void gen(Node *node) {
                 return;
             }
             size = sizeof_parse(node->lhs->type->ptr_to);
-            if (size == 4) {
-                printf("  movsx rax, dword ptr [rax]\n");
-            } else if (size == 1) {
-                printf("  movzx rax, byte ptr [rax]\n");
-            } else if (size == 8) {
-                printf("  mov rax, qword ptr [rax]\n");
-            } else if (size == 2) {
-                printf("  movsx rax, word ptr [rax]\n");
-            } else {
-                error("no reg size %d", size);
-            }
+            gen_load_addr(size);
             return;
         case ND_GVAR:
             gen_lval(node);
@@ -436,17 +446,7 @@ void gen(Node *node) {
                 return;
             }
             size = sizeof_parse(node->gvar->type);
-            if (size == 4) {
-                printf("  movsx rax, dword ptr [rax]\n");
-            } else if (size == 1) {
-                printf("  movzx rax, byte ptr [rax]\n");
-            } else if (size == 8) {
-                printf("  mov rax, qword ptr [rax]\n");
-            } else if (size == 2) {
-                printf("  movsx rax, word ptr [rax]\n");
-            } else {
-                error("no reg size %d", size);
-            }
+            gen_load_addr(size);
             return;
         case ND_STR:
             printf("  lea rax, .LC%d[rip]\n", node->s->offset);

@@ -2,29 +2,42 @@ CFLAGS=-std=c11 -g
 SRCS=main.c parse.c tool.c codegen.c  # $(wildcard *.c)
 OBJS=$(SRCS:.c=.o)
 ASMS=$(SRCS:.c=.s)
-GEN2ASMS=$(SRCS:.c=_gen2.s)
+GEN2ASMS=$(SRCS:.c=_2.s)
+GEN3ASMS=$(SRCS:.c=_3.s)
 
-mcc: $(OBJS)
-		$(CC) -o mcc $(OBJS) $(LDFLAGS)
+# mcc: $(OBJS)
+# 		$(CC) -o mcc $(OBJS) $(LDFLAGS)
 
-$(OBJS): mcc.h libc_alternatives.h
+# $(OBJS): mcc.h libc_alternatives.h
+
+mcc: $(ASMS)
+		$(CC) -o mcc $(ASMS) $(LDFLAGS)
+
+%.s: %.c libc_alternatives.h mcc.h
+		./mcc_stable $< > $@
 
 test: mcc
 		./test.sh
 
-mcc_gen3: $(GEN2ASMS)
-		$(CC) -o mcc_gen3 $(GEN2ASMS) $(LDFLAGS)
+test_self_compile: $(GEN3ASMS)
+		./test_self_compile.sh
 
-%_gen2.s: %.c mcc_gen2
+mcc_gen3: $(GEN3ASMS)
+		$(CC) -o mcc_gen3 $(GEN3ASMS) $(LDFLAGS)
+
+%_3.s: %.c mcc_gen2
 		./mcc_gen2 $< > $@
 
-mcc_gen2: $(ASMS)
-		$(CC) -o mcc_gen2 $(ASMS) $(LDFLAGS)
+mcc_gen2: $(GEN2ASMS)
+		$(CC) -o mcc_gen2 $(GEN2ASMS) $(LDFLAGS)
 
-%.s: %.c mcc $(SRCS)
+%_2.s: %.c mcc
 		./mcc $< > $@
 
-clean:
-		rm -f mcc *.o *~ tmp*
+mcc_stable: mcc
+		cp mcc mcc_stable
 
-.PHONY: test clean
+clean:
+		rm -f *.o *~ tmp* *.s mcc mcc_gen2 mcc_gen3
+
+.PHONY: test clean test_self_compile

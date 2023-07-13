@@ -1,6 +1,23 @@
 #include "test/test.h"
 #include "libc_alternatives.h"
 
+void print(int i) {
+    printf("%d\n", i);
+}
+
+int *alloc4(int a, int b, int c, int d) {
+    int *ret = malloc(sizeof(int) * 8);
+    ret[0] = a;
+    ret[1] = b;
+    ret[2] = c;
+    ret[3] = d;
+    return ret;
+}
+
+void printPTR(int *i) {
+    printf("%d\n", i[1]);
+}
+
 assert(t0, {}, 0)
 assert(t1, {return 42;}, 42)
 assert(t2, {return 5+20-4;}, 21)
