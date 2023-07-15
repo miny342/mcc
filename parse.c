@@ -1309,6 +1309,69 @@ Type *eval_type_all() {
         return NULL;
 }
 
+void show_type(Type *, int);
+
+int type_equal(Type *t1, Type *t2) {
+    if (t1 == t2) {
+        return 1;
+    }
+    if (t1 == NULL || t2 == NULL) {
+        return 0;
+    }
+    if (t1->ty == t2->ty) {
+        if (t1->ty == PTR) {
+            return type_equal(t1->ptr_to, t2->ptr_to);
+        } else if (t1->ty == ARRAY) {
+            return t1->array_size == t2->array_size && type_equal(t1->ptr_to, t2->ptr_to);
+        } else if (t1->ty == FUNC) {
+            Type *ty1;
+            Type *ty2;
+
+            // どちらかの最後が...なら返り値のみ検証する
+            // TODO: ...の直前まで確認する
+            if (t1->args->len > 1) {
+                ty1 = t1->args->data[t1->args->len - 1];
+                if (ty1->ty == VA_ARGS) {
+                    return type_equal(t1->ret, t2->ret);
+                }
+            }
+            if (t2->args->len > 1) {
+                ty2 = t2->args->data[t2->args->len - 1];
+                if (t2->ty == VA_ARGS) {
+                    return type_equal(t1->ret, t2->ret);
+                }
+            }
+
+            if (t1->args->len != t2->args->len) {
+                return 0;
+            } else {
+                for (int i = 0; i < t1->args->len; i++) {
+                    ty1 = t1->args->data[i];
+                    ty2 = t2->args->data[i];
+                    if (!type_equal(ty1, ty2)) {
+                        return 0;
+                    }
+                }
+                return type_equal(t1->ret, t2->ret);
+            }
+        } else if (t1->ty == STRUCT) {
+            if (t1->fields->len != t2->fields->len) {
+                return 0;
+            }
+            for (int i = 0; i < t1->args->len; i++) {
+                Type *ty1 = t1->fields->data[i];
+                Type *ty2 = t2->fields->data[i];
+                if (!type_equal(ty1, ty2)) {
+                    return 0;
+                }
+            }
+            return 1;
+        }
+        return 1;
+    }
+    return 0;
+}
+
 int calc_aligned(int offset, Type *type) {
     offset += sizeof_parse(type);
     int align = get_align(type);
@@ -1345,8 +1408,13 @@ void assign_lvar_arr(LVar *lvar, int len) {
 GVar *init_gvar(Type *type, Token *tok, int is_extern) {
     GVar *gvar = find_gvar(tok);
     if (gvar) {
-        if (gvar->is_extern) {  // TODO: 型が一致するか
-            return gvar;
+        if (gvar->is_extern) {
+            if (type_equal(type, gvar->type)) {
+                return gvar;
+            }
+            show_type(type, 0);
+            show_type(gvar->type, 0);
+            error("extern宣言と型が一致しません");
         }
         error_at(token->str, "duplicate");
     }

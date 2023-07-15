@@ -72,7 +72,7 @@ bool at_eof();
 Token *new_token(TokenKind kind, Token *cur, char *str, int len);
 Token *tokenize(char *p, int need_eof);
 Token *preprocess();
-void print_token();
+void print_token(Token *t);
 
 // parse.c
 
