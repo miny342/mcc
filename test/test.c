@@ -381,6 +381,15 @@ assert(t67, {
     return _t67(1, 2, 3, 4);
 }, 7);
 
+int _t68(int a, int b, int c, int d, int e, int f, int g, ...) {
+    va_list ap;
+    va_start(ap, g);
+    return a + b + vfprintf(stdout, "%d %d %d\n", ap);
+}
+assert(t68, {
+    return _t68(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+}, 10);
+
 int a = 1;
 int *d[10] = { &a + 1, &a + 2 };
 int *b = &a;
@@ -398,7 +407,7 @@ int main() {
     t31();t32();t33();t34();t35();t36();t37();t38();t39();t40();
     t41();t42();t43();t44();t45();t46();t47();t48();t49();t50();
     t51();t52();t53();t54();t55();t56();t57();t58();t59();t60();
-    t61();t62();t63();t64();t65();t66();t67();
+    t61();t62();t63();t64();t65();t66();t67();t68();
 
     printf("OK\n");
 }

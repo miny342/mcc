@@ -59,12 +59,6 @@ void gen_global() {
     // rspが16の倍数か検証し、そうでない場合exit(2)を呼ぶ
     printf("__checkrsp:\n  push rdi\n  mov rdi, rsp\n  and rdi, 15\n  test rdi, rdi\n  je .checkrsp\n  mov rdi, 2\n  call exit\n.checkrsp:\n  pop rdi\n  ret\n");
 
-    // printf(".globl main\n");
-
-    // va_startに対応する
-    // とりあえず可変長引数の始まりがレジスタの場合に
-    printf("__va_start:\n  mov rax, rbp\n  sub rax, rsi\n  mov rsi, 56\n  sub rsi, rax\n  mov dword ptr [rdi], esi\n  mov dword ptr [rdi+4], 0\n  lea rax, [rbp+16]\n  mov qword ptr [rdi+8], rax\n  lea rax, [rbp-48]\n  mov qword ptr [rdi+16], rax\n  ret\n");
-
     GVar *data;
     GVar **tmp = &data;
 
@@ -238,6 +232,23 @@ void gen_callregister(Node *node) {
 void gen_call(Node *node) {
     if (node->kind != ND_CALL)
         error("this is not call function");
+
+    if (node->lhs->kind == ND_GVAR && node->lhs->gvar->len == 10 && !strncmp(node->lhs->gvar->name, "__va_start", 10)) {
+        int ap_offset = node->rhs->lhs->lvar->offset;
+        int arg_offset = node->rhs->rhs->lhs->lhs->lvar->offset;
+        if (arg_offset > 0) {
+            printf("  mov dword ptr [rbp-%d], %d\n", ap_offset, 56 - arg_offset);
+            printf("  lea rax, [rbp+16]\n");
+        } else {
+            printf("  mov dword ptr [rbp-%d], %d\n", ap_offset, 48);
+            printf("  lea rax, [rbp+%d]\n", 8 - arg_offset);
+        }
+        printf("  mov qword ptr [rbp-%d], rax\n", ap_offset - 8);
+        printf("  mov dword ptr [rbp-%d], %d\n", ap_offset - 4, 0);
+        printf("  lea rax, [rbp-48]\n");
+        printf("  mov qword ptr [rbp-%d], rax\n", ap_offset - 16);
+        return;
+    }
 
     int stack = gen_callstack(node->rhs, 0);
 

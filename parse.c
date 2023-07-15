@@ -1678,7 +1678,7 @@ void globalstmt(GVar **ptr) {
             }
         }
         lvar = locals;
-        for (int i = 0; i < args->len; i++) {
+        for (int i = 0; i < args->len && lvar; i++) {
             if (i >= 6) {
                 lvar->offset = (4 - i) * 8;
             } else {
