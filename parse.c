@@ -265,8 +265,7 @@ Token *tokenize(char *p, int need_eof) {
         }
 
         if (strncmp(p, "static", 6) == 0 && !is_alnum(p[6])) {
-            // cur = new_token(TK_SWITCH, cur, p, 6);
-            // TODO: いつか対応する
+            cur = new_token(TK_STATIC, cur, p, 6);
             p += 6;
             continue;
         }
@@ -1552,6 +1551,10 @@ void globalstmt(GVar **ptr) {
         *ptr = gvar;
         return;
     }
+    int is_static = 0;
+    if (consumeTK(TK_STATIC)) {
+        is_static = 1;
+    }
     Type *type = eval_type_top();
     if (consume(";")) {
         return;
@@ -1563,6 +1566,7 @@ void globalstmt(GVar **ptr) {
     Token *tok = type->tok;
     if (!type || !tok) error_at(token->str, "型が正しくありません");
     GVar *gvar = init_gvar(type, tok, 0);
+    gvar->is_static = is_static;
     if (type->ty == FUNC) {
         if (type->ret->ty == STRUCT) {
             error_at(token->str, "structを返す関数は利用できません(unimplemented)");
@@ -1703,6 +1707,7 @@ void globalstmt(GVar **ptr) {
         gvar->node = calc_node(gvar->node);
         if (gvar->is_extern) {
             gvar->is_extern = 0;
+            gvar->is_globl = 1;
         } else {
             *ptr = gvar;
         }

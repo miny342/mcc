@@ -71,7 +71,9 @@ void gen_global() {
     for(; code; code = code->next) {
         if (code->type->ty == FUNC && code->node) {
             Type *type = code->type;
-            printf(".globl %.*s\n", code->len, code->name); // TODO: externの物のみにする
+            if (!code->is_static) {
+                printf(".globl %.*s\n", code->len, code->name);
+            }
             printf("%.*s:\n", code->len, code->name);
 
             // prologue
@@ -112,7 +114,11 @@ void gen_global() {
     printf(".data\n");
     for(; data; data = data->next) {
         if (!data->is_extern) {
-            printf(".globl %.*s\n", data->len, data->name);
+            if (data->is_globl) {
+                printf(".globl %.*s\n", data->len, data->name);
+            } else if (data->is_static) {
+                printf(".local %.*s\n", data->len, data->name);
+            }
             printf("%.*s:\n", data->len, data->name);
             int size = data->size - gen_gvar(data->node);
             if (size > 0) {

@@ -35,6 +35,7 @@ typedef enum {
     TK_DEFAULT,  // default
     TK_DO,       // do
     TK_SHORT,    // short
+    TK_STATIC,   // static
 } TokenKind;
 
 typedef struct Token Token;
@@ -127,6 +128,8 @@ struct GVar {
     LVar *locals; // type == func
     int offset;  // type == func
     int is_extern; // externかどうか
+    int is_static; // staticかどうか
+    int is_globl;  // globlにするか
 };
 
 extern GVar *code;
