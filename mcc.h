@@ -47,6 +47,7 @@ struct Token {
     int val;        // kindがTK_NUMの場合、その数値
     char *str;      // トークン文字列
     int len;        // トークンの長さ
+    char *error;    // エラー時の場所
 };
 
 // 現在着目しているトークン

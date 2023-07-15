@@ -127,14 +127,14 @@ bool consumeTK(NodeKind kind) {
 // それ以外の場合にはエラーを報告する。
 void expect(char *op) {
     if (token->kind != TK_RESERVED || strlen(op) != token->len || memcmp(token->str, op, token->len))
-        error_at(token->str, "'%s'ではありません", op);
+        error_at(token->error, "'%s'ではありません", op);
     token = token->next;
 }
 
 // 次のトークンが数値の場合、トークンを1つ読み進めてその数値を返す。
 // それ以外の場合にはエラーを報告する。
 int expect_number() {
-    if (token->kind != TK_NUM) error_at(token->str, "数ではありません");
+    if (token->kind != TK_NUM) error_at(token->error, "数ではありません");
     int val = token->val;
     token = token->next;
     return val;
@@ -185,6 +185,7 @@ Token *new_token(TokenKind kind, Token *cur, char *str, int len) {
     tok->str = str;
     tok->len = len;
     cur->next = tok;
+    tok->error = str;
     return tok;
 }
 
@@ -440,26 +441,28 @@ Token *tokenize(char *p, int need_eof) {
 }
 
 // NULLに行きつくまで複製
-Token *duplicate_token(Token *tok) {
+Token *duplicate_token(Token *tok, char *error) {
     if (tok == NULL) {
         return NULL;
     }
     Token *t = malloc(sizeof(Token));
     memcpy(t, tok, sizeof(Token));
-    t->next = duplicate_token(tok->next);
+    t->error = error;
+    t->next = duplicate_token(tok->next, error);
     return t;
 }
 
 // kindとなるトークンまで読み飛ばし、そのトークンを返す
 // もし存在しないならエラー
 Token *expect_exist(TokenKind kind) {
+    Token *errtok = token;
     while(token && token->kind != kind) token = token->next;
     if (token) {
         Token *tmp = token;
         token = token->next;
         return tmp;
     } else {
-        error("expected %d token kind, but not found", kind);
+        error_at(errtok->error, "expected %d token kind, but not found", kind);
     }
 }
 
@@ -495,7 +498,7 @@ Token *preprocess() {
                                     break;
                                 }
                                 if (kakko == 0) {
-                                    error_at(token->str, "マクロの引数が足りません");
+                                    error_at(token->error, "マクロの引数が足りません");
                                 }
                                 kakko--;
                             } else if (kakko == 0 && consume(",")) {
@@ -507,10 +510,10 @@ Token *preprocess() {
                         }
                     }
                     if (tmpv->len > data->args->len) {
-                        error_at(token->str, "引数が多すぎます");
+                        error_at(token->error, "引数が多すぎます");
                     }
 
-                    Token *replace_to = duplicate_token(data->expand_to);
+                    Token *replace_to = duplicate_token(data->expand_to, ident->error);
                     prev_in_macro = NULL;
                     // argを変換
                     for (Token *tok = replace_to; tok; tok = tok->next) {
@@ -518,7 +521,7 @@ Token *preprocess() {
                             for (int i = 0; i < data->args->len; i++) {
                                 Token *arg = data->args->data[i];
                                 if (arg->len == tok->len && !strncmp(arg->str, tok->str, arg->len)) {
-                                    Token *arg_replace_to = duplicate_token(tmpv->data[i]);
+                                    Token *arg_replace_to = duplicate_token(tmpv->data[i], ident->error);
                                     if (!prev_in_macro) {
                                         replace_to = arg_replace_to;
                                         prev_in_macro = arg_replace_to;
@@ -543,7 +546,7 @@ Token *preprocess() {
                     for (Token *tok = replace_to; tok; tok = tok->next) {
                         if (tok->kind == TK_MACRO) {
                             if (prev_in_macro == NULL) {
-                                error("#が先頭にあります");
+                                error_at(ident->error, "#が先頭にあります");
                             }
                             if (tok->next->kind == TK_MACRO) {
                                 tok = tok->next->next;
@@ -553,13 +556,16 @@ Token *preprocess() {
                                 memcpy(tmp + prev_in_macro->len, tok->str, tok->len);
                                 tmp[len] = 0;
                                 Token *t = tokenize(tmp, 1);
+                                t->error = ident->error;
                                 prev_in_macro->kind = t->kind;
                                 prev_in_macro->str = t->str;
                                 prev_in_macro->len = t->len;
                                 prev_in_macro->next = t->next;
+                                prev_in_macro->error = t->error;
                                 if (t->next->kind != TK_EOF) {
                                     while(t->next) {
                                         prev_in_macro = t;
+                                        t->error = ident->error;
                                         t = t->next;
                                     }
                                 }
@@ -577,6 +583,7 @@ Token *preprocess() {
                                 tmp[tok->len] = 0;
                                 memcpy(tmp + 1, tok->str, tok->len - 2);
                                 tok->str = tmp;
+                                tok->error = ident->error;
                             }
                         }
                         prev_in_macro = tok;
@@ -600,7 +607,7 @@ Token *preprocess() {
                 } else if (!data->args) {
                     strmapset(macromap, ident->str, ident->len, NULL);
 
-                    Token *replace_to = duplicate_token(data->expand_to);
+                    Token *replace_to = duplicate_token(data->expand_to, ident->error);
                     if (replace_to != NULL) {
                         Token *now_token = token;
                         token = replace_to;
@@ -639,7 +646,7 @@ Token *preprocess() {
                         while(1) {
                             Token *arg = consume_ident();
                             if (!arg) {
-                                error_at(token->str, "不正なトークンです");
+                                error_at(token->error, "不正なトークンです");
                             }
                             push(data->args, arg); // トークンを指すアドレスを入れておく
                             if (!consume(",")) {
@@ -660,7 +667,7 @@ Token *preprocess() {
                     token = tmp;
                 }
                 if (!consumeTK(TK_MACRO_END)) {
-                    error_at(token->str, "unexpected error(compiler bug)");
+                    error_at(token->error, "unexpected error(compiler bug)");
                 }
                 prev->next = token;
                 strmapset(macromap, tok->str, tok->len, data);
@@ -700,10 +707,10 @@ Token *preprocess() {
                             }
                         }
                     default:
-                        error_at(token->str, "includeできません");
+                        error_at(token->error, "includeできません");
                 }
                 if (!consumeTK(TK_MACRO_END)) {
-                    error_at(token->str, "不正なトークンを含んでいます");
+                    error_at(token->error, "不正なトークンを含んでいます");
                 }
 
                 Token *filetoken = tokenize(filetext, 0);
@@ -714,7 +721,10 @@ Token *preprocess() {
 
                 if (filetoken) {
                     prev->next = filetoken;
-                    while(filetoken->next) filetoken = filetoken->next;
+                    while(filetoken->next) {
+                        filetoken->error = tok->error;
+                        filetoken = filetoken->next;
+                    }
                     filetoken->next = token;
                     prev = filetoken;
                 }
@@ -725,7 +735,7 @@ Token *preprocess() {
                 MacroData *data = strmapget(macromap, tok->str, tok->len);
                 int ifcount = 0;
                 if (token->kind != TK_MACRO_END) {
-                    error("ifdefが正常に終わっていません");
+                    error_at(tok->error, "ifdefが正常に終わっていません");
                 }
                 token = token->next;
                 Token *iftok = token; // start
@@ -735,19 +745,20 @@ Token *preprocess() {
                     Token *tmp = expect_exist(TK_MACRO);
                     tok = consume_ident();
                     if (!tok) {
+                        Token *errtok = token;
                         if (consumeTK(TK_ELSE)) {
                             if (ifcount == 0) {
                                 if (elsetok) {
-                                    error("二度目のelseマクロです");
+                                    error_at(errtok->error, "二度目のelseマクロです");
                                 }
                                 if (token->kind != TK_MACRO_END) {
-                                    error("elseマクロが正常に終わっていません");
+                                    error_at(errtok->error, "elseマクロが正常に終わっていません");
                                 }
                                 elsetok = tmp;
                             }
                             continue;
                         } else {
-                            error("token %dはidentではありません", tok->kind);
+                            error_at(errtok->error, "token %dはidentではありません", errtok->kind);
                         }
                     }
                     if (tok->len == 5 && !strncmp(tok->str, "ifdef", 5)) {
@@ -759,7 +770,7 @@ Token *preprocess() {
                             ifcount--;
                         } else {
                             if (token->kind != TK_MACRO_END) {
-                                error("endifマクロが正常に終わっていません");
+                                error_at(token->error, "endifマクロが正常に終わっていません");
                             }
                             token = token->next;
                             endiftok = tmp;
@@ -959,14 +970,14 @@ Node *calc_node(Node *node) {
 int calc(Node *node) {
     Node *n = calc_node(node);
     if (n->kind != ND_NUM) {
-        error_at(token->str, "calc error");
+        error_at(token->error, "calc error");
     }
     return n->val;
 }
 
 int sizeof_parse(Type *type) {
     if (!type)
-        error_at(token->str, "type parse error");
+        error_at(token->error, "type parse error");
     else if (type->ty == INT)
         return sizeof(int);
     else if (type->ty == PTR)
@@ -989,12 +1000,12 @@ int sizeof_parse(Type *type) {
         int align = get_align(ty);
         return size + (align - (size % align)) % align;
     }
-    else error_at(token->str, "不明な型のsizeof");
+    else error_at(token->error, "不明な型のsizeof");
 }
 
 int get_align(Type *type) {
     if (!type)
-        error_at(token->str, "type parse error");
+        error_at(token->error, "type parse error");
     else if (type->ty == ARRAY)
         return get_align(type->ptr_to);
     else if (type->ty == STRUCT) {
@@ -1017,10 +1028,10 @@ int get_align(Type *type) {
 // consume("{")はされていると思って読む
 Type *def_struct(Type *type) {
     if (type->ty != STRUCT) {
-        error_at(token->str, "structではありません(コンパイラのバグ)");
+        error_at(token->error, "structではありません(コンパイラのバグ)");
     }
     if (type->fields) {
-        error_at(token->str, "定義済みです");
+        error_at(token->error, "定義済みです");
     }
     Type *args = type;
     int offset = 0;
@@ -1029,7 +1040,7 @@ Type *def_struct(Type *type) {
         while(1) {
             Type *ty = eval_type_all();
             if (!ty || !ty->tok) {
-                error_at(token->str, "フィールド名が定義されていません");
+                error_at(token->error, "フィールド名が定義されていません");
             }
             expect(";");
             int size = sizeof_parse(ty);
@@ -1050,7 +1061,7 @@ Type *def_struct(Type *type) {
 // {は読んだとみる
 Type *def_enum(Type *type) {
     if (type->ty != INT) {
-        error_at(token->str, "enumではありません(コンパイラのバグ)");
+        error_at(token->error, "enumではありません(コンパイラのバグ)");
     }
     int i = 0;
     if (!consume("}")) {
@@ -1116,11 +1127,11 @@ Type *eval_type_acc(Token **ident, Type **bottom) {
                 btm_ = top_;
             } else {
                 if (top_->ty == FUNC) {
-                    error_at(token->str, "関数を返す関数は利用できません");
+                    error_at(token->error, "関数を返す関数は利用できません");
                 } else if (top_->ty == ARRAY) {
-                    error_at(token->str, "関数の配列は利用できません");
+                    error_at(token->error, "関数の配列は利用できません");
                 } else {
-                    error_at(token->str, "unexpected error func");
+                    error_at(token->error, "unexpected error func");
                 }
             }
             btm_->ty = FUNC;
@@ -1130,8 +1141,8 @@ Type *eval_type_acc(Token **ident, Type **bottom) {
                 // 引数を読む
                 while(1) {
                     arg = eval_type_all();
-                    if (!arg) error_at(token->str, "型として処理できません");
-                    if (arg->ty == STRUCT) error_at(token->str, "関数の引数に構造体は渡せません(unimplemented)");
+                    if (!arg) error_at(token->error, "型として処理できません");
+                    if (arg->ty == STRUCT) error_at(token->error, "関数の引数に構造体は渡せません(unimplemented)");
                     if (arg->ty == ARRAY) {
                         Type *tmp = arg;
                         arg = malloc(sizeof(Type));
@@ -1151,7 +1162,7 @@ Type *eval_type_acc(Token **ident, Type **bottom) {
                 btm_->ptr_to = calloc(1, sizeof(Type));
                 btm_ = btm_->ptr_to;
             } else {
-                error_at(token->str, "配列を返す関数は利用できません");
+                error_at(token->error, "配列を返す関数は利用できません");
             }
             btm_->ty = ARRAY;
             if (consume("]")) {
@@ -1177,7 +1188,7 @@ Type *eval_type_acc(Token **ident, Type **bottom) {
         } else if (btm_->ty == ARRAY) {
             btm_->ptr_to = top;
         } else {
-            error_at(token->str, "unexpected error top_");
+            error_at(token->error, "unexpected error top_");
         }
         top = top_;
     }
@@ -1188,20 +1199,20 @@ Type *eval_type_acc(Token **ident, Type **bottom) {
             btm = tmp_btm;
         } else if (tmp_btm->ty == FUNC) {
             if (top->ty == ARRAY) {
-                error_at(token->str, "配列を返す関数は利用できません");
+                error_at(token->error, "配列を返す関数は利用できません");
             } else if (top->ty == FUNC) {
-                error_at(token->str, "関数を返す関数は利用できません");
+                error_at(token->error, "関数を返す関数は利用できません");
             }
             tmp_btm->ret = top;
         } else if (tmp_btm->ty == ARRAY) {
             if (top->ty == FUNC) {
-                error_at(token->str, "関数の配列は利用できません");
+                error_at(token->error, "関数の配列は利用できません");
             }
             tmp_btm->ptr_to = top;
         } else if (tmp_btm->ty == PTR) {
             tmp_btm->ptr_to = top;
         } else {
-            error_at(token->str, "unexpected error tmp_top");
+            error_at(token->error, "unexpected error tmp_top");
         }
         top = tmp_top;
     }
@@ -1290,7 +1301,7 @@ Type *eval_type_ident(Type *type) {
         } else if (btm->ty == ARRAY || btm->ty == PTR) {
             btm->ptr_to = type;
         } else {
-            error_at(token->str, "unexpected error all btm, %d\n", btm->ty);
+            error_at(token->error, "unexpected error all btm, %d\n", btm->ty);
         }
     } else {
         type->tok = tok;
@@ -1383,7 +1394,7 @@ int calc_aligned(int offset, Type *type) {
 
 LVar *init_lvar(Type *type) {
     if (type->ty == VA_ARGS) {
-        error_at(token->str, "assign lvarにva argsが入力されました(unimplemented)");
+        error_at(token->error, "assign lvarにva argsが入力されました(unimplemented)");
     }
     if (find_lvar(type->tok)) {
         error_at(type->tok->str, "duplicate");
@@ -1414,9 +1425,9 @@ GVar *init_gvar(Type *type, Token *tok, int is_extern) {
             }
             show_type(type, 0);
             show_type(gvar->type, 0);
-            error("extern宣言と型が一致しません");
+            error_at(tok->error, "extern宣言と型が一致しません");
         }
-        error_at(token->str, "duplicate");
+        error_at(token->error, "duplicate");
     }
     gvar = calloc(1, sizeof(GVar));
     gvar->name = tok->str;
@@ -1458,7 +1469,7 @@ int is_ptr_or_array(Node *node) {
 
 Node *add_node(Node *lhs, Node *rhs) {
     if (is_ptr_or_array(lhs) && is_ptr_or_array(rhs)) {
-        error_at(token->str, "ptr + ptrはできません");
+        error_at(token->error, "ptr + ptrはできません");
     }
     if (is_ptr_or_array(lhs)) {
         Type *type = calloc(1, sizeof(Type));
@@ -1486,21 +1497,21 @@ Node *sub_node(Node *lhs, Node *rhs) {
         return new_node(ND_SUB, lhs, new_node(ND_MUL, new_node_num(sizeof_parse(lhs->type->ptr_to)), rhs, NULL), type);
     }
     if(is_ptr_or_array(rhs)) {
-        error_at(token->str, "int - ptrは未定義です");
+        error_at(token->error, "int - ptrは未定義です");
     }
     return new_node(ND_SUB, lhs, rhs, &int_type);
 }
 
 Node *deref_node(Node *n) {
     if (!is_ptr_or_array(n)) {
-        error_at(token->str, "derefできません");
+        error_at(token->error, "derefできません");
     }
     return new_node(ND_DEREF, n, NULL, n->type->ptr_to);
 }
 
 Node *assign_node(Node *lhs, Node *rhs) {
     if (lhs->kind != ND_LVAR && lhs->kind != ND_DEREF && lhs->kind != ND_GVAR) {
-        error_at(token->str, "左辺に代入できません");
+        error_at(token->error, "左辺に代入できません");
     }
     return new_node(ND_ASSIGN, lhs, rhs, lhs->type);
 }
@@ -1574,7 +1585,7 @@ void type_test() {
                 if (i == 0) break;
             }
         } else if (!consume(";")) {
-            error_at(token->str, "type parse error");
+            error_at(token->error, "type parse error");
         }
     }
 
@@ -1600,10 +1611,10 @@ void globalstmt(GVar **ptr) {
     if (consumeTK(TK_TYPEDEF)) {
         Type *type = eval_type_all();
         if (!type->tok) {
-            error_at(token->str, "型名がありません");
+            error_at(token->error, "型名がありません");
         }
         if (strmapget(typenamemap, type->tok->str, type->tok->len)) {
-            error_at(token->str, "定義済みです");
+            error_at(token->error, "定義済みです");
         }
         strmapset(typenamemap, type->tok->str, type->tok->len, type);
         expect(";");
@@ -1612,7 +1623,7 @@ void globalstmt(GVar **ptr) {
     if (consumeTK(TK_EXTERN)) {
         Type *type = eval_type_all();
         if (!type || !type->tok) {
-            error("定義がありません %.*s", 20, token->str);
+            error_at(token->error, "定義がありません");
         }
         GVar *gvar = init_gvar(type, type->tok, 1);
         expect(";");
@@ -1628,16 +1639,16 @@ void globalstmt(GVar **ptr) {
         return;
     }
     if (!type) {
-        error("type read error %.*s", 20, token->str);
+        error_at(token->error, "type read error");
     }
     type = eval_type_ident(type);
     Token *tok = type->tok;
-    if (!type || !tok) error_at(token->str, "型が正しくありません");
+    if (!type || !tok) error_at(token->error, "型が正しくありません");
     GVar *gvar = init_gvar(type, tok, 0);
     gvar->is_static = is_static;
     if (type->ty == FUNC) {
         if (type->ret->ty == STRUCT) {
-            error_at(token->str, "structを返す関数は利用できません(unimplemented)");
+            error_at(token->error, "structを返す関数は利用できません(unimplemented)");
         }
         if (consume(";")) {
             gvar->is_extern = 1;
@@ -1681,7 +1692,7 @@ void globalstmt(GVar **ptr) {
             *ptr = gvar;
         }
         if (*token->str != '{') {
-            error_at(token->str, "{ ではありません");
+            error_at(token->error, "{ ではありません");
         }
         gvar->node = calc_node(stmt());
         gvar->locals = locals;
@@ -1715,7 +1726,7 @@ void globalstmt(GVar **ptr) {
                     }
                     if (type->array_size != -1) {
                         if (i > type->array_size) {
-                            error_at(token->str, "引数が多すぎます");
+                            error_at(token->error, "引数が多すぎます");
                         }
                     } else {
                         type->array_size = i;
@@ -1742,7 +1753,7 @@ void globalstmt(GVar **ptr) {
                     i++;
                     if (type->array_size != -1) {
                         if (i > type->array_size) {
-                            error_at(token->str, "文字列が長すぎます");
+                            error_at(token->error, "文字列が長すぎます");
                         }
                     } else {
                         type->array_size = i;
@@ -1751,7 +1762,7 @@ void globalstmt(GVar **ptr) {
                     gvar->node = node;
                     token = token->next;
                 } else {
-                    error_at(token->str, "unimplemented");
+                    error_at(token->error, "unimplemented");
                 }
             } else if (gvar->type->ty == STRUCT) {
                 expect("{");
@@ -1769,7 +1780,7 @@ void globalstmt(GVar **ptr) {
             }
         }
         if (type->array_size == -1) {
-            error_at(token->str, "配列の初期化ができません");
+            error_at(token->error, "配列の初期化ができません");
         }
         expect(";");
         gvar->node = calc_node(gvar->node);
@@ -1865,7 +1876,7 @@ Node *stmt() {
                 expect(":");
                 for (int i = 0; i < v->len; i++) {
                     if (v->data[i] == c) {
-                        error_at(token->str, "このcaseの数値はすでに使われています");
+                        error_at(token->error, "このcaseの数値はすでに使われています");
                     }
                 }
                 push(v, c);
@@ -1888,7 +1899,7 @@ Node *stmt() {
     } else if (consumeTK(TK_DO)) {
         node = new_node(ND_DO, NULL, stmt(), NULL);
         if (!consumeTK(TK_WHILE)) {
-            error_at(token->str, "whileがありません");
+            error_at(token->error, "whileがありません");
         }
         expect("(");
         node->lhs = assign();
@@ -1944,7 +1955,7 @@ Node *expr() {
                                     node = block_node(assign_node(deref_node(add_node(ptr_node, new_node_num(i))), new_node_num(0)), node);
                                 }
                                 if (i > lvar->type->array_size) {
-                                    error_at(token->str, "配列が長すぎます");
+                                    error_at(token->error, "配列が長すぎます");
                                 }
                             } else {
                                 assign_lvar_arr(lvar, i);
@@ -1976,14 +1987,14 @@ Node *expr() {
                         }
                         token = token->next;
                     } else {
-                        error_at(token->str, "unexpected token");
+                        error_at(token->error, "unexpected token");
                     }
                 } else {
                     node = new_node(ND_ASSIGN, lvar_node(lvar), assign(), lvar->type);
                 }
             }
             if (type->array_size == -1) {
-                error_at(token->str, "配列の初期化ができません");
+                error_at(token->error, "配列の初期化ができません");
             }
             locals = lvar;
             top_node = new_node(ND_DECLARATION, node, top_node, NULL);
@@ -2014,56 +2025,56 @@ Node *assign() {
     if(consume("*=")) {
         Node *right = assign();
         if (is_ptr_or_array(node) || is_ptr_or_array(right)) {
-            error_at(token->str, "ポインタの掛け算は未定義です");
+            error_at(token->error, "ポインタの掛け算は未定義です");
         }
         return assign_node(node, new_node(ND_MUL, node, right, &int_type));
     }
     if(consume("/=")) {
         Node *right = assign();
         if (is_ptr_or_array(node) || is_ptr_or_array(right)) {
-            error_at(token->str, "ポインタの割り算は未定義です");
+            error_at(token->error, "ポインタの割り算は未定義です");
         }
         return assign_node(node, new_node(ND_DIV, node, right, &int_type));
     }
     if(consume("%=")) {
         Node *right = assign();
         if (is_ptr_or_array(node) || is_ptr_or_array(right)) {
-            error_at(token->str, "ポインタの余剰は未定義です");
+            error_at(token->error, "ポインタの余剰は未定義です");
         }
         return assign_node(node, new_node(ND_REMINDER, node, right, &int_type));
     }
     if(consume("<<=")) {
         Node *right = assign();
         if (is_ptr_or_array(node) || is_ptr_or_array(right)) {
-            error_at(token->str, "ポインタのシフト計算は未定義です");
+            error_at(token->error, "ポインタのシフト計算は未定義です");
         }
         return assign_node(node, new_node(ND_LSHIFT, node, right, &int_type));
     }
     if(consume(">>=")) {
         Node *right = assign();
         if (is_ptr_or_array(node) || is_ptr_or_array(right)) {
-            error_at(token->str, "ポインタのシフト計算は未定義です");
+            error_at(token->error, "ポインタのシフト計算は未定義です");
         }
         return assign_node(node, new_node(ND_RSHIFT, node, right, &int_type));
     }
     if(consume("&=")) {
         Node *right = assign();
         if (is_ptr_or_array(node) || is_ptr_or_array(right)) {
-            error_at(token->str, "ポインタのAND計算は未定義です");
+            error_at(token->error, "ポインタのAND計算は未定義です");
         }
         return assign_node(node, new_node(ND_BITAND, node, right, &int_type));
     }
     if(consume("|=")) {
         Node *right = assign();
         if (is_ptr_or_array(node) || is_ptr_or_array(right)) {
-            error_at(token->str, "ポインタのOR計算は未定義です");
+            error_at(token->error, "ポインタのOR計算は未定義です");
         }
         return assign_node(node, new_node(ND_BITOR, node, right, &int_type));
     }
     if(consume("^=")) {
         Node *right = assign();
         if (is_ptr_or_array(node) || is_ptr_or_array(right)) {
-            error_at(token->str, "ポインタのXOR計算は未定義です");
+            error_at(token->error, "ポインタのXOR計算は未定義です");
         }
         return assign_node(node, new_node(ND_BITXOR, node, right, &int_type));
     }
@@ -2219,19 +2230,19 @@ Node *mul() {
         if (consume("*")) {
             right = cast();
             if (is_ptr_or_array(node) || is_ptr_or_array(right))
-                error_at(token->str, "ptr * ptr is not defined");
+                error_at(token->error, "ptr * ptr is not defined");
             node = new_node(ND_MUL, node, right, &int_type);
         }
         else if (consume("/")) {
             right = cast();
             if (is_ptr_or_array(node) || is_ptr_or_array(right))
-                error_at(token->str, "ptr / ptr is not defined");
+                error_at(token->error, "ptr / ptr is not defined");
             node = new_node(ND_DIV, node, right, &int_type);
         }
         else if (consume("%")) {
             right = cast();
             if (is_ptr_or_array(node) || is_ptr_or_array(right))
-                error_at(token->str, "ptr %% ptr is not defined");
+                error_at(token->error, "ptr %% ptr is not defined");
             node = new_node(ND_REMINDER, node, right, &int_type);
         }
         else
@@ -2265,19 +2276,19 @@ Node *unary() {
     if (consume("-")) {
         node = unary();
         if (is_ptr_or_array(node))
-            error_at(token->str, "-ptr is not defined");
+            error_at(token->error, "-ptr is not defined");
         return new_node(ND_NEG, node, NULL, node->type);
     }
     if (consume("*")) {
         node = unary();
         if (!is_ptr_or_array(node))
-            error_at(token->str, "this is not ptr");
+            error_at(token->error, "this is not ptr");
         if (node->type->ptr_to->ty == FUNC)
             return node;
         return new_node(ND_DEREF, node, NULL, node->type->ptr_to);
     }
     if (consume("&")) {
-        if (consume("&")) error_at(token->str, "&& is not usable");
+        if (consume("&")) error_at(token->error, "&& is not usable");
         node = unary();
         if (node->gvar && node->gvar->type->ty == PTR && node->gvar->type->ptr_to->ty == FUNC) {
             return node;
@@ -2329,7 +2340,7 @@ Node *unary() {
             expect("]");
         } else if (consume("(")) {
             if (node->type->ty != PTR || node->type->ptr_to->ty != FUNC) {
-                error_at(token->str, "関数ではありません");
+                error_at(token->error, "関数ではありません");
             }
             Node *n = calloc(1, sizeof(Node));
             n->kind = ND_CALL;
@@ -2357,11 +2368,11 @@ Node *unary() {
             node = new_node(ND_DECR, NULL, node, node->type);
         } else if (consume(".")) {
             if (node->type->ty != STRUCT) {
-                error_at(token->str, ".は未定義です");
+                error_at(token->error, ".は未定義です");
             }
             Token *tok = consume_ident();
             if (!tok) {
-                error_at(token->str, "identがありません");
+                error_at(token->error, "identがありません");
             }
             Type *ty;
             for(int i = 0; i < node->type->fields->len; i++) {
@@ -2381,11 +2392,11 @@ Node *unary() {
             }
         } else if (consume("->")) {
             if (!(is_ptr_or_array(node) && node->type->ptr_to->ty == STRUCT)) {
-                error_at(token->str, "->は未定義です");
+                error_at(token->error, "->は未定義です");
             }
             Token *tok = consume_ident();
             if (!tok) {
-                error_at(token->str, "identがありません");
+                error_at(token->error, "identがありません");
             }
             Type *ty;
             for(int i = 0; i < node->type->ptr_to->fields->len; i++) {
