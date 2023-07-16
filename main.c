@@ -53,6 +53,8 @@ int main(int argc, char **argv){
 
     program();
 
-    gen_global();
+    gen_global_ir();
+
+    // gen_global();
     return 0;
 }

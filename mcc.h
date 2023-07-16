@@ -230,6 +230,65 @@ Node *cast();
 Node *unary();
 Node *primary();
 
+// gen_ir.c
+
+typedef struct {
+    Vec *blocks;
+} Function;
+
+typedef struct {
+    Vec *instructions;
+} Block;
+
+typedef struct {
+    enum {
+        V_REG,
+        V_LVAR,
+        V_GVAR,
+        V_NUM,
+        V_STR,
+        V_DEREF,
+    } ty;
+    int num; // V_REG || V_NUM || V_STR || V_DEREF
+    LVar *lvar;
+    GVar *gvar;
+} Value;
+
+typedef enum {
+    IR_ADD,
+    IR_SUB,
+    IR_MUL,
+    IR_DIV,
+    IR_EQ,
+    IR_NE,
+    IR_LT,
+    IR_LE,
+    IR_RETURN,
+    IR_IF,
+    IR_CALL,
+    IR_ADDR,
+    IR_REMINDER,
+    IR_LSHIFT,
+    IR_RSHIFT,
+    IR_BITAND,
+    IR_BITXOR,
+    IR_BITOR,
+    IR_NEG,
+    IR_NOT,
+    IR_BITNOT,
+    IR_MOV,
+} InstructionOP;
+
+typedef struct {
+    Value *lval;
+    InstructionOP op;
+    Value *lhs;
+    Value *rhs;
+    int *to;
+} Instruction;
+
+void gen_global_ir();
+Value *gen_ir(Node *node);
 
 // codegen.c
 void gen(Node *node);
