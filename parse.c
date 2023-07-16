@@ -1895,6 +1895,9 @@ Node *stmt() {
         }
         free(v->data);
         free(v);
+        if (locals && (locals->offset > max_offset)) {
+            max_offset = locals->offset;
+        }
         locals = now_locals;
     } else if (consumeTK(TK_DO)) {
         node = new_node(ND_DO, NULL, stmt(), NULL);
