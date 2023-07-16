@@ -6,14 +6,18 @@ Block *blk;
 
 int used_reg;
 
+int *ir_break_label = NULL;
+int *ir_continue_label = NULL;
+
 void add_instruction(Instruction *ir) {
     push(blk->instructions, ir);
 }
 
-void new_block() {
+int new_block() {
     blk = calloc(1, sizeof(Block));
     blk->instructions = vec_new();
     push(fn->blocks, blk);
+    return fn->blocks->len - 1; // new_blockのindexを返す
 }
 
 Value *reg_value(int reg) {
@@ -47,19 +51,23 @@ void show_value(Value *v) {
     if (v->ty == V_REG) {
         printe("r%d", v->num);
     } else if (v->ty == V_LVAR) {
-        printe("l%.*s", v->lvar->len, v->lvar->name);
+        printe("l_%.*s", v->lvar->len, v->lvar->name);
     } else if (v->ty == V_GVAR) {
-        printe("g%.*s", v->gvar->len, v->gvar->name);
+        printe("g_%.*s", v->gvar->len, v->gvar->name);
     } else if (v->ty == V_NUM) {
         printe("%d", v->num);
     } else if (v->ty == V_STR) {
-        printe("LC%d", v->num);
+        printe(".LC%d", v->num);
     } else if (v->ty == V_DEREF) {
         printe("*r%d", v->num);
     } else {
         error("show value");
     }
 }
+
+static char *opstr[] = {
+    "+", "-", "*", "/", "==", "!=", "<", "<=", "r", "if", "call", "addr", "%", "<<", ">>", "&", "^", "|", "-", "!", "~", "mov", "goto"
+};
 
 void show_ir(Instruction *ir) {
     printe("  ");
@@ -78,11 +86,19 @@ void show_ir(Instruction *ir) {
             printe(" = &");
             show_value(ir->lhs);
             break;
+        case IR_IF:
+            printe("if (");
+            show_value(ir->lhs);
+            printe(") goto %d", *ir->to);
+            break;
+        case IR_GOTO:
+            printe("goto %d", *ir->to);
+            break;
         default:
             show_value(ir->lval);
             printe(" = ");
             show_value(ir->lhs);
-            printe(" %d ", ir->op);
+            printe(" %s ", opstr[ir->op]);
             show_value(ir->rhs);
             break;
     }
@@ -118,6 +134,7 @@ void gen_global_ir() {
 
             push(functions, fn);
 
+            printe("fn %.*s\n", code->len, code->name);
             show_fn(fn);
 
         } else if (code->type->ty != FUNC) {
@@ -300,8 +317,10 @@ Value *gen_lval_ir(Node *node) {
 // nodeから中間表現を出力
 // V_REGまたはNULLを返すことを期待する
 Value *gen_ir(Node *node) {
-    int loopval, size, clabel, blabel;
+    int loopval, size, *clabel, *blabel;
     if(node == NULL) return NULL;
+
+    int *la1, *la2;
 
     Value *l, *r, *t;
     Instruction *inst;
@@ -350,66 +369,102 @@ Value *gen_ir(Node *node) {
 
             add_instruction(inst);
             return r;
-        // case ND_WHILE:
-        //     loopval = labelcnt;
-        //     labelcnt += 2;
-        //     blabel = break_label;
-        //     clabel = continue_label;
-        //     break_label = loopval + 1;
-        //     continue_label = loopval;
-        //     printf(".L%d:\n", loopval);
-        //     gen(node->lhs);
-        //     printf("  cmp rax, 0\n");
-        //     printf("  je .L%d\n", loopval + 1);
-        //     gen(node->rhs);
-        //     printf("  jmp .L%d\n", loopval);
-        //     printf(".L%d:\n", loopval + 1);
-        //     break_label = blabel;
-        //     continue_label = clabel;
-        //     return;
-        // case ND_IF:
-        //     loopval = labelcnt;
-        //     if(node->rhs->kind == ND_ELSE) {
-        //         labelcnt += 2;
-        //         gen(node->lhs);
-        //         printf("  cmp rax, 0\n");
-        //         printf("  je .L%d\n", loopval);
-        //         gen(node->rhs->lhs);
-        //         printf("  jmp .L%d\n", loopval + 1);
-        //         printf(".L%d:\n", loopval);
-        //         gen(node->rhs->rhs);
-        //         printf(".L%d:\n", loopval + 1);
-        //     } else {
-        //         labelcnt += 1;
-        //         gen(node->lhs);
-        //         printf("  cmp rax, 0\n");
-        //         printf("  je .L%d\n", loopval);
-        //         gen(node->rhs);
-        //         printf(".L%d:\n", loopval);
-        //     }
-        //     return;
-        // case ND_FOR:
-        //     loopval = labelcnt;
-        //     labelcnt += 2;
-        //     blabel = break_label;
-        //     clabel = continue_label;
-        //     break_label = loopval + 1;
-        //     continue_label = 1;
-        //     gen(node->lhs);
-        //     printf(".L%d:\n", loopval);
-        //     gen(node->rhs->lhs);
-        //     printf("  cmp rax, 0\n");
-        //     printf("  je .L%d\n", loopval + 1);
-        //     gen(node->rhs->rhs->rhs);
-        //     if (continue_label > 1) {
-        //         printf(".L%d:\n", continue_label);
-        //     }
-        //     gen(node->rhs->rhs->lhs);
-        //     printf("  jmp .L%d\n", loopval);
-        //     printf(".L%d:\n", loopval + 1);
-        //     continue_label = clabel;
-        //     break_label = blabel;
-        //     return;
+        case ND_WHILE:
+            blabel = ir_break_label;
+            clabel = ir_continue_label;
+
+            ir_break_label = malloc(sizeof(int));
+            ir_continue_label = malloc(sizeof(int));
+
+            *ir_continue_label = new_block();
+
+            l = gen_ir(node->lhs);
+
+            inst = calloc(1, sizeof(Instruction));
+            inst->op = IR_IF;
+            inst->to = ir_break_label;
+            inst->lhs = l;
+            add_instruction(inst);
+
+            new_block();
+
+            r = gen_ir(node->rhs);
+
+            inst = calloc(1, sizeof(Instruction));
+            inst->op = IR_GOTO;
+            inst->to = ir_continue_label;
+            add_instruction(inst);
+
+            *ir_break_label = new_block();
+
+            ir_break_label = blabel;
+            ir_continue_label = clabel;
+
+            return NULL;
+        case ND_IF:
+            la1 = malloc(sizeof(int));
+
+            l = gen_ir(node->lhs);
+            inst = calloc(1, sizeof(Instruction));
+            inst->op = IR_IF;
+            inst->lhs = l;
+            inst->to = la1;
+            add_instruction(inst);
+
+            new_block();
+
+            // ?:の時の値をどう扱うか
+            if (node->rhs->kind == ND_ELSE) {
+                la2 = malloc(sizeof(int));
+                r = gen_ir(node->rhs->lhs);
+                inst = calloc(1, sizeof(Instruction));
+                inst->op = IR_GOTO;
+                inst->to = la2;
+                add_instruction(inst);
+                *la1 = new_block();
+                r = gen_ir(node->rhs->rhs);
+                *la2 = new_block();
+            } else {
+                r = gen_ir(node->rhs);
+                *la1 = new_block();
+            }
+            return NULL;
+        case ND_FOR:
+            blabel = ir_break_label;
+            clabel = ir_continue_label;
+
+            la1 = malloc(sizeof(int));
+            ir_break_label = malloc(sizeof(int));
+            ir_continue_label = malloc(sizeof(int));
+
+            gen_ir(node->lhs);
+
+            *la1 = new_block();
+
+            l = gen_ir(node->rhs->lhs);
+            inst = calloc(1, sizeof(Instruction));
+            inst->lhs = l;
+            inst->to = ir_break_label;
+            inst->op = IR_IF;
+            add_instruction(inst);
+
+            new_block();
+
+            l = gen_ir(node->rhs->rhs->rhs);
+
+            *ir_continue_label = new_block();
+
+            l = gen_ir(node->rhs->rhs->lhs);
+            inst = calloc(1, sizeof(Instruction));
+            inst->op = IR_GOTO;
+            inst->to = la1;
+            add_instruction(inst);
+
+            *ir_break_label = new_block();
+
+            ir_break_label = blabel;
+            ir_continue_label = clabel;
+            return NULL;
         case ND_BLOCK:
             gen_ir(node->rhs);
             gen_ir(node->lhs);
