@@ -94,6 +94,19 @@ void show_ir(Instruction *ir) {
         case IR_GOTO:
             printe("goto %d", *ir->to);
             break;
+        case IR_CALL:
+            show_value(ir->lval);
+            printe(" = ");
+            show_value(ir->lhs);
+            printe("(");
+            for (int i = 0; i < ir->args->len; i++) {
+                show_value(ir->args->data[i]);
+                if (i < ir->args->len - 1) {
+                    printe(", ");
+                }
+            }
+            printe(")");
+            break;
         default:
             show_value(ir->lval);
             printe(" = ");
@@ -195,60 +208,45 @@ Value *gen_lval_ir(Node *node) {
     return inst->lval;
 }
 
-// int gen_callstack(Node *node, int num) {
-//     int use_stack;
-//     if(node->lhs) {
-//         use_stack = gen_callstack(node->rhs, num + 1);
-//         gen(node->lhs);
-//         printf("  push rax\n");
-//         pushcnt++;
-//         return use_stack;
-//     } else {
-//         use_stack = num > 6 ? num - 6 : 0;
-//         if ((pushcnt - use_stack) & 1) {
-//             printf("  sub rsp, 8\n");
-//             pushcnt++;
-//             return use_stack + 1;
-//         }
-//         return use_stack;
-//     }
-// }
+void gen_callstack_ir(Node *node, Vec *v) {
+    if (node->lhs) {
+        gen_callstack_ir(node->rhs, v);
+        Value *val = gen_ir(node->lhs);
+        push(v, val);
+    }
+}
 
-// void gen_callregister(Node *node) {
-//     int num = 0;
-//     node = node->rhs;
-//     while(node && num < 6) {
-//         printf("  pop %s\n", qword_reg[num]);
-//         pushcnt--;
-//         num++;
-//         node = node->rhs;
-//     }
-// }
+Value *gen_call_ir(Node *node) {
+    if (node->kind != ND_CALL)
+        error("this is not call function");
 
-// void gen_call(Node *node) {
-//     if (node->kind != ND_CALL)
-//         error("this is not call function");
+    Vec *v = vec_new();
+    gen_callstack_ir(node->rhs, v);
 
-//     int stack = gen_callstack(node->rhs, 0);
+    for(int i = 0; i < v->len / 2; i++) {
+        void *d = v->data[i];
+        v->data[i] = v->data[v->len - 1 - i];
+        v->data[v->len - 1 - i] = d;
+    }
 
-//     if (node->lhs->kind == ND_GVAR) {
-//         gen_callregister(node->rhs);
-//         printf("  xor rax, rax\n");
-//         printf("  call __checkrsp\n");  // 呼び出し前にrspの検証をする
-//         printf("  call %.*s\n", node->lhs->gvar->len, node->lhs->gvar->name);
-//     } else {
-//         gen(node->lhs);
-//         gen_callregister(node->rhs);
-//         printf("  mov r10, rax\n");
-//         printf("  xor rax, rax\n");
-//         printf("  call __checkrsp\n");
-//         printf("  call r10\n");
-//     }
-//     if (stack > 0) {
-//         printf("  add rsp, %d\n", stack * 8);
-//         pushcnt -= stack;
-//     }
-// }
+    Instruction *inst = calloc(1, sizeof(Instruction));
+    inst->op = IR_CALL;
+    inst->args = v;
+
+    Value *val;
+    if (node->lhs->kind == ND_GVAR) {
+        val = calloc(1, sizeof(Value));
+        val->ty = V_GVAR;
+        val->gvar = node->lhs->gvar;
+        inst->lhs = val;
+    } else {
+        val = gen_ir(node->lhs);
+        inst->lhs = val;
+    }
+    inst->lval = reg_value(used_reg++);
+    add_instruction(inst);
+    return inst->lval;
+}
 
 // // ジャンプするアセンブリを吐きながら必要なラベル数を返す
 // int gen_switch_top(Node *node) {
@@ -469,9 +467,8 @@ Value *gen_ir(Node *node) {
             gen_ir(node->rhs);
             gen_ir(node->lhs);
             return NULL;
-        // case ND_CALL:
-        //     gen_call(node);
-        //     return;
+        case ND_CALL:
+            return gen_call_ir(node);
         case ND_ADDR:
             l = gen_lval_ir(node->lhs);
             return l;

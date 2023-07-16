@@ -22,3 +22,8 @@ int t2() {
         tmp = tmp + i;
     return tmp;
 }
+
+int t3() {
+    int (*f)(int, int, int, int, int, int, int, int) = t2;
+    f(1, 2, 3, 4, 5, 6, 7, 8);
+}

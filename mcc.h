@@ -286,6 +286,7 @@ typedef struct {
     Value *lhs;
     Value *rhs;
     int *to;
+    Vec *args; // Value*の配列, regを想定
 } Instruction;
 
 void gen_global_ir();
