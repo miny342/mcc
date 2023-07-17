@@ -52,3 +52,23 @@ int t6(int a) {
     int y = x++;
     y = --x;
 }
+
+int printf(char *fmt, ...);
+
+int t7() {
+    int i = 5;
+    switch (i + 1) {
+        case 4:
+            printf("error\n");
+            break;
+        case 6:
+            printf("ok show\n");
+        case 5:
+            printf("this is also show\n");
+            i = 20;
+            break;
+        default:
+            printf("no\n");
+    }
+    return i;
+}
