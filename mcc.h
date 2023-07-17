@@ -264,7 +264,8 @@ typedef enum {
     IR_LT,
     IR_LE,
     IR_RETURN,
-    IR_IF,  // ==0ならgoto
+    IR_IF_EQ_0,  // ==0ならgoto
+    IR_IF_NE_0,  // !=0ならgoto
     IR_CALL,
     IR_ADDR,
     IR_REMINDER,
@@ -278,6 +279,7 @@ typedef enum {
     IR_BITNOT,
     IR_MOV,
     IR_GOTO,
+    IR_PHI, // ?:, &&, ||
 } InstructionOP;
 
 typedef struct {

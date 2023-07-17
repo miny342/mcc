@@ -86,10 +86,15 @@ void show_ir(Instruction *ir) {
             printe(" = &");
             show_value(ir->lhs);
             break;
-        case IR_IF:
+        case IR_IF_EQ_0:
             printe("if (");
             show_value(ir->lhs);
-            printe(") goto %d", *ir->to);
+            printe(" == 0) goto %d", *ir->to);
+            break;
+        case IR_IF_NE_0:
+            printe("if (");
+            show_value(ir->lhs);
+            printe(" != 0) goto %d", *ir->to);
             break;
         case IR_GOTO:
             printe("goto %d", *ir->to);
@@ -105,6 +110,14 @@ void show_ir(Instruction *ir) {
                     printe(", ");
                 }
             }
+            printe(")");
+            break;
+        case IR_PHI:
+            show_value(ir->lval);
+            printe(" = Φ(");
+            show_value(ir->lhs);
+            printe(", ");
+            show_value(ir->rhs);
             printe(")");
             break;
         default:
@@ -315,7 +328,7 @@ Value *gen_call_ir(Node *node) {
 // nodeから中間表現を出力
 // V_REGまたはNULLを返すことを期待する
 Value *gen_ir(Node *node) {
-    int loopval, size, *clabel, *blabel;
+    int tmp1, tmp2, *clabel, *blabel;
     if(node == NULL) return NULL;
 
     int *la1, *la2;
@@ -341,6 +354,10 @@ Value *gen_ir(Node *node) {
             return inst->lval;
         case ND_LVAR:
             l = gen_lval_ir(node);
+
+            if (node->lvar->type->ty == ARRAY) {
+                return l;
+            }
 
             t = calloc(1, sizeof(Value));
             t->num = l->num;
@@ -379,7 +396,7 @@ Value *gen_ir(Node *node) {
             l = gen_ir(node->lhs);
 
             inst = calloc(1, sizeof(Instruction));
-            inst->op = IR_IF;
+            inst->op = IR_IF_EQ_0;
             inst->to = ir_break_label;
             inst->lhs = l;
             add_instruction(inst);
@@ -404,7 +421,7 @@ Value *gen_ir(Node *node) {
 
             l = gen_ir(node->lhs);
             inst = calloc(1, sizeof(Instruction));
-            inst->op = IR_IF;
+            inst->op = IR_IF_EQ_0;
             inst->lhs = l;
             inst->to = la1;
             add_instruction(inst);
@@ -443,7 +460,7 @@ Value *gen_ir(Node *node) {
             inst = calloc(1, sizeof(Instruction));
             inst->lhs = l;
             inst->to = ir_break_label;
-            inst->op = IR_IF;
+            inst->op = IR_IF_EQ_0;
             add_instruction(inst);
 
             new_block();
@@ -485,41 +502,144 @@ Value *gen_ir(Node *node) {
             inst->op = IR_MOV;
             add_instruction(inst);
             return inst->lval;
-        // case ND_GVAR:
-        //     gen_lval(node);
-        //     if (node->type->ty == ARRAY) {
-        //         return;
-        //     }
-        //     size = sizeof_parse(node->gvar->type);
-        //     gen_load_addr(size);
-        //     return;
-        // case ND_STR:
-        //     printf("  lea rax, .LC%d[rip]\n", node->s->offset);
-        //     return;
-        // case ND_AND:
-        //     loopval = labelcnt;
-        //     labelcnt += 1;
-        //     gen(node->lhs);
-        //     printf("  test rax, rax\n");  // ZF = (rax != 0)
-        //     printf("  je .L%d\n", loopval);  // je: ZFが1ならjump <=> raxが0ならjump
-        //     gen(node->rhs);
-        //     printf("  test rax, rax\n");
-        //     printf(".L%d:\n", loopval);
-        //     printf("  setne al\n");  // !ZFを格納
-        //     printf("  movzb rax, al\n");
-        //     return;
-        // case ND_OR:
-        //     loopval = labelcnt;
-        //     labelcnt += 1;
-        //     gen(node->lhs);
-        //     printf("  test rax, rax\n");
-        //     printf("  jne .L%d\n", loopval); // jne: ZFが0ならjump <=> raxが0でないならjump
-        //     gen(node->rhs);
-        //     printf("  test rax, rax\n");
-        //     printf(".L%d:\n", loopval);
-        //     printf("  setne al\n");
-        //     printf("  movzb rax, al\n");
-        //     return;
+        case ND_GVAR:
+            l = gen_lval_ir(node);
+
+            if (node->gvar->type->ty == ARRAY) {
+                return l;
+            }
+
+            t = calloc(1, sizeof(Value));
+            t->num = l->num;
+            t->ty = V_DEREF;
+
+            inst = calloc(1, sizeof(Instruction));
+            inst->lhs = t;
+            inst->op = IR_MOV;
+            inst->lval = reg_value(used_reg++);
+            add_instruction(inst);
+            return inst->lval;
+        case ND_STR:
+            t = calloc(1, sizeof(Value));
+            t->ty = V_STR;
+            t->num = node->s->offset;
+
+            inst = calloc(1, sizeof(Instruction));
+            inst->lval = reg_value(used_reg++);
+            inst->lhs = t;
+            inst->op = IR_MOV;
+            add_instruction(inst);
+            return inst->lval;
+        case ND_AND:
+            la1 = malloc(sizeof(int));
+            la2 = malloc(sizeof(int));
+
+            l = gen_ir(node->lhs);
+            inst = calloc(1, sizeof(Instruction));
+            inst->op = IR_IF_EQ_0;
+            inst->lhs = l;
+            inst->to = la1;
+            add_instruction(inst);
+            new_block();
+
+            l = gen_ir(node->rhs);
+            inst = calloc(1, sizeof(Instruction));
+            inst->op = IR_IF_EQ_0;
+            inst->lhs = l;
+            inst->to = la1;
+            add_instruction(inst);
+
+            new_block();
+            tmp1 = used_reg++;
+
+            inst = calloc(1, sizeof(Instruction));
+            inst->op = IR_MOV;
+            inst->lval = reg_value(tmp1);
+            inst->lhs = calloc(1, sizeof(Value));
+            inst->lhs->num = 1;
+            inst->lhs->ty = V_NUM;
+            add_instruction(inst);
+
+            inst = calloc(1, sizeof(Instruction));
+            inst->op = IR_GOTO;
+            inst->to = la2;
+            add_instruction(inst);
+
+            *la1 = new_block();
+            tmp2 = used_reg++;
+            inst = calloc(1, sizeof(Instruction));
+            inst->op = IR_MOV;
+            inst->lval = reg_value(tmp2);
+            inst->lhs = calloc(1, sizeof(Value));
+            inst->lhs->num = 0;
+            inst->lhs->ty = V_NUM;
+            add_instruction(inst);
+
+            *la2 = new_block();
+
+            inst = calloc(1, sizeof(Instruction));
+            inst->op = IR_PHI;
+            inst->lval = reg_value(used_reg++);
+            inst->lhs = reg_value(tmp1);
+            inst->rhs = reg_value(tmp2);
+            add_instruction(inst);
+
+            return inst->lval;
+        case ND_OR:
+            la1 = malloc(sizeof(int));
+            la2 = malloc(sizeof(int));
+
+            l = gen_ir(node->lhs);
+            inst = calloc(1, sizeof(Instruction));
+            inst->op = IR_IF_NE_0;
+            inst->lhs = l;
+            inst->to = la1;
+            add_instruction(inst);
+            new_block();
+
+            l = gen_ir(node->rhs);
+            inst = calloc(1, sizeof(Instruction));
+            inst->op = IR_IF_NE_0;
+            inst->lhs = l;
+            inst->to = la1;
+            add_instruction(inst);
+
+            new_block();
+            tmp1 = used_reg++;
+
+            inst = calloc(1, sizeof(Instruction));
+            inst->op = IR_MOV;
+            inst->lval = reg_value(tmp1);
+            inst->lhs = calloc(1, sizeof(Value));
+            inst->lhs->num = 0;
+            inst->lhs->ty = V_NUM;
+            add_instruction(inst);
+
+            inst = calloc(1, sizeof(Instruction));
+            inst->op = IR_GOTO;
+            inst->to = la2;
+            add_instruction(inst);
+
+            *la1 = new_block();
+            tmp2 = used_reg++;
+            inst = calloc(1, sizeof(Instruction));
+            inst->op = IR_MOV;
+            inst->lval = reg_value(tmp2);
+            inst->lhs = calloc(1, sizeof(Value));
+            inst->lhs->num = 1;
+            inst->lhs->ty = V_NUM;
+            add_instruction(inst);
+
+            *la2 = new_block();
+
+            inst = calloc(1, sizeof(Instruction));
+            inst->op = IR_PHI;
+            inst->lval = reg_value(used_reg++);
+            inst->lhs = reg_value(tmp1);
+            inst->rhs = reg_value(tmp2);
+            add_instruction(inst);
+
+            return inst->lval;
         case ND_DECLARATION:
             gen_ir(node->lhs);
             return NULL;

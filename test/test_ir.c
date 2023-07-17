@@ -27,3 +27,19 @@ int t3() {
     int (*f)(int, int, int, int, int, int, int, int) = t2;
     f(1, 2, 3, 4, 5, 6, 7, 8);
 }
+
+int t29_a;
+int t29_b[10];
+int t29_foo() {
+    return t29_b[t29_a];
+}
+
+int t4() {
+    char *a = "aa";
+    char b[] = "bb";
+}
+
+int t5(int a, int b) {
+    int x = a && b;
+    int y = a || b;
+}
