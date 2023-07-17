@@ -43,3 +43,12 @@ int t5(int a, int b) {
     int x = a && b;
     int y = a || b;
 }
+
+int t6(int a) {
+    int x;
+    x = -a;
+    x = !a;
+    x = ~a;
+    int y = x++;
+    y = --x;
+}

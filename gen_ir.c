@@ -66,7 +66,7 @@ void show_value(Value *v) {
 }
 
 static char *opstr[] = {
-    "+", "-", "*", "/", "==", "!=", "<", "<=", "r", "if", "call", "addr", "%", "<<", ">>", "&", "^", "|", "-", "!", "~", "mov", "goto"
+    "+", "-", "*", "/", "==", "!=", "<", "<=", "r", "ifeq", "ifne", "call", "&", "%", "<<", ">>", "&", "^", "|", "-", "!", "~", "mov", "goto"
 };
 
 void show_ir(Instruction *ir) {
@@ -79,11 +79,6 @@ void show_ir(Instruction *ir) {
         case IR_MOV:
             show_value(ir->lval);
             printe(" = ");
-            show_value(ir->lhs);
-            break;
-        case IR_ADDR:
-            show_value(ir->lval);
-            printe(" = &");
             show_value(ir->lhs);
             break;
         case IR_IF_EQ_0:
@@ -119,6 +114,14 @@ void show_ir(Instruction *ir) {
             printe(", ");
             show_value(ir->rhs);
             printe(")");
+            break;
+        case IR_ADDR:
+        case IR_NEG:
+        case IR_NOT:
+        case IR_BITNOT:
+            show_value(ir->lval);
+            printe(" = %s", opstr[ir->op]);
+            show_value(ir->lhs);
             break;
         default:
             show_value(ir->lval);
@@ -195,30 +198,23 @@ void gen_global_ir() {
 
 // regにアドレスを入れて返す
 Value *gen_lval_ir(Node *node) {
-    Value *v;
-    Instruction *inst;
+    Value *v, *res;
     if(node->kind == ND_DEREF) {
         return gen_ir(node->lhs);
     }
-    inst = calloc(1, sizeof(Instruction));
-    inst->lval = reg_value(used_reg++);
-    inst->op = IR_ADDR;
-    add_instruction(inst);
+    v = calloc(1, sizeof(Value));
+    res = add_op(IR_ADDR, v, NULL);
     if (node->kind == ND_GVAR) {
-        v = calloc(1, sizeof(Value));
         v->ty = V_GVAR;
         v->gvar = node->gvar;
-        inst->lhs = v;
-        return inst->lval;
+        return res;
     }
     if (node->kind != ND_LVAR) {
         error("代入の左辺が変数ではありません");
     }
-    v = calloc(1, sizeof(Value));
     v->ty = V_LVAR;
     v->lvar = node->lvar;
-    inst->lhs = v;
-    return inst->lval;
+    return res;
 }
 
 void gen_callstack_ir(Node *node, Vec *v) {
@@ -337,21 +333,13 @@ Value *gen_ir(Node *node) {
     Instruction *inst;
     switch (node->kind) {
         case ND_RETURN:
-            l = gen_ir(node->lhs);
-            inst = calloc(1, sizeof(Instruction));
-            inst->op = IR_RETURN;
-            inst->lhs = l;
-            add_instruction(inst);
+            add_op(IR_RETURN, gen_ir(node->lhs), NULL);
             return NULL;
         case ND_NUM:
-            inst = calloc(1, sizeof(Instruction));
-            inst->lhs = calloc(1, sizeof(Value));
-            inst->lhs->ty = V_NUM;
-            inst->lhs->num = node->val;
-            inst->op = IR_MOV;
-            inst->lval = reg_value(used_reg++);
-            add_instruction(inst);
-            return inst->lval;
+            t = calloc(1, sizeof(Value));
+            t->ty = V_NUM;
+            t->num = node->val;
+            return add_op(IR_MOV, t, NULL);
         case ND_LVAR:
             l = gen_lval_ir(node);
 
@@ -363,12 +351,7 @@ Value *gen_ir(Node *node) {
             t->num = l->num;
             t->ty = V_DEREF;
 
-            inst = calloc(1, sizeof(Instruction));
-            inst->lhs = t;
-            inst->op = IR_MOV;
-            inst->lval = reg_value(used_reg++);
-            add_instruction(inst);
-            return inst->lval;
+            return add_op(IR_MOV, t, NULL);
         case ND_ASSIGN:
             r = gen_ir(node->rhs);
             l = gen_lval_ir(node->lhs);
@@ -428,10 +411,9 @@ Value *gen_ir(Node *node) {
 
             new_block();
 
-            // ?:の時の値をどう扱うか
             if (node->rhs->kind == ND_ELSE) {
                 la2 = malloc(sizeof(int));
-                r = gen_ir(node->rhs->lhs);
+                l = gen_ir(node->rhs->lhs);
                 inst = calloc(1, sizeof(Instruction));
                 inst->op = IR_GOTO;
                 inst->to = la2;
@@ -439,6 +421,7 @@ Value *gen_ir(Node *node) {
                 *la1 = new_block();
                 r = gen_ir(node->rhs->rhs);
                 *la2 = new_block();
+                return add_op(IR_PHI, l, r);
             } else {
                 r = gen_ir(node->rhs);
                 *la1 = new_block();
@@ -496,12 +479,7 @@ Value *gen_ir(Node *node) {
             t->num = l->num;
             t->ty = V_DEREF;
 
-            inst = calloc(1, sizeof(Instruction));
-            inst->lval = reg_value(used_reg++);
-            inst->lhs = t;
-            inst->op = IR_MOV;
-            add_instruction(inst);
-            return inst->lval;
+            return add_op(IR_MOV, t, NULL);
         case ND_GVAR:
             l = gen_lval_ir(node);
 
@@ -513,23 +491,13 @@ Value *gen_ir(Node *node) {
             t->num = l->num;
             t->ty = V_DEREF;
 
-            inst = calloc(1, sizeof(Instruction));
-            inst->lhs = t;
-            inst->op = IR_MOV;
-            inst->lval = reg_value(used_reg++);
-            add_instruction(inst);
-            return inst->lval;
+            return add_op(IR_MOV, t, NULL);
         case ND_STR:
             t = calloc(1, sizeof(Value));
             t->ty = V_STR;
             t->num = node->s->offset;
 
-            inst = calloc(1, sizeof(Instruction));
-            inst->lval = reg_value(used_reg++);
-            inst->lhs = t;
-            inst->op = IR_MOV;
-            add_instruction(inst);
-            return inst->lval;
+            return add_op(IR_MOV, t, NULL);
         case ND_AND:
             la1 = malloc(sizeof(int));
             la2 = malloc(sizeof(int));
@@ -550,15 +518,12 @@ Value *gen_ir(Node *node) {
             add_instruction(inst);
 
             new_block();
-            tmp1 = used_reg++;
 
-            inst = calloc(1, sizeof(Instruction));
-            inst->op = IR_MOV;
-            inst->lval = reg_value(tmp1);
-            inst->lhs = calloc(1, sizeof(Value));
-            inst->lhs->num = 1;
-            inst->lhs->ty = V_NUM;
-            add_instruction(inst);
+            t = calloc(1, sizeof(Value));
+            t->num = 1;
+            t->ty = V_NUM;
+
+            l = add_op(IR_MOV, t, NULL);
 
             inst = calloc(1, sizeof(Instruction));
             inst->op = IR_GOTO;
@@ -566,25 +531,16 @@ Value *gen_ir(Node *node) {
             add_instruction(inst);
 
             *la1 = new_block();
-            tmp2 = used_reg++;
-            inst = calloc(1, sizeof(Instruction));
-            inst->op = IR_MOV;
-            inst->lval = reg_value(tmp2);
-            inst->lhs = calloc(1, sizeof(Value));
-            inst->lhs->num = 0;
-            inst->lhs->ty = V_NUM;
-            add_instruction(inst);
+
+            t = calloc(1, sizeof(Value));
+            t->num = 0;
+            t->ty = V_NUM;
+
+            r = add_op(IR_MOV, t, NULL);
 
             *la2 = new_block();
 
-            inst = calloc(1, sizeof(Instruction));
-            inst->op = IR_PHI;
-            inst->lval = reg_value(used_reg++);
-            inst->lhs = reg_value(tmp1);
-            inst->rhs = reg_value(tmp2);
-            add_instruction(inst);
-
-            return inst->lval;
+            return add_op(IR_PHI, l, r);
         case ND_OR:
             la1 = malloc(sizeof(int));
             la2 = malloc(sizeof(int));
@@ -605,15 +561,12 @@ Value *gen_ir(Node *node) {
             add_instruction(inst);
 
             new_block();
-            tmp1 = used_reg++;
 
-            inst = calloc(1, sizeof(Instruction));
-            inst->op = IR_MOV;
-            inst->lval = reg_value(tmp1);
-            inst->lhs = calloc(1, sizeof(Value));
-            inst->lhs->num = 0;
-            inst->lhs->ty = V_NUM;
-            add_instruction(inst);
+            t = calloc(1, sizeof(Value));
+            t->num = 0;
+            t->ty = V_NUM;
+
+            l = add_op(IR_MOV, t, NULL);
 
             inst = calloc(1, sizeof(Instruction));
             inst->op = IR_GOTO;
@@ -621,142 +574,121 @@ Value *gen_ir(Node *node) {
             add_instruction(inst);
 
             *la1 = new_block();
-            tmp2 = used_reg++;
-            inst = calloc(1, sizeof(Instruction));
-            inst->op = IR_MOV;
-            inst->lval = reg_value(tmp2);
-            inst->lhs = calloc(1, sizeof(Value));
-            inst->lhs->num = 1;
-            inst->lhs->ty = V_NUM;
-            add_instruction(inst);
+
+            t = calloc(1, sizeof(Value));
+            t->num = 1;
+            t->ty = V_NUM;
+
+            r = add_op(IR_MOV, t, NULL);
 
             *la2 = new_block();
 
-            inst = calloc(1, sizeof(Instruction));
-            inst->op = IR_PHI;
-            inst->lval = reg_value(used_reg++);
-            inst->lhs = reg_value(tmp1);
-            inst->rhs = reg_value(tmp2);
-            add_instruction(inst);
-
-            return inst->lval;
+            return add_op(IR_PHI, l, r);
         case ND_DECLARATION:
             gen_ir(node->lhs);
             return NULL;
-        // case ND_NEG:
-        //     gen(node->lhs);
-        //     printf("  neg rax\n");
-        //     return;
-        // case ND_NOT:
-        //     gen(node->lhs);
-        //     printf("  test rax, rax\n");
-        //     printf("  sete al\n");
-        //     printf("  movzb rax, al\n");
-        //     return;
-        // case ND_BITNOT:
-        //     gen(node->lhs);
-        //     printf("  not rax\n");
-        //     return;
-        // case ND_INCR:
-        //     if (node->lhs) {
-        //         gen_lval(node->lhs);
-        //         if (node->type->ty == PTR) {
-        //             printf("  add qword ptr [rax], %d\n", sizeof_parse(node->type->ptr_to));
-        //             printf("  mov rax, qword ptr [rax]\n");
-        //         } else {
-        //             size = sizeof_parse(node->type);
-        //             if (size == 1) {
-        //                 printf("  add byte ptr [rax], 1\n");
-        //                 printf("  movzx rax, byte ptr [rax]\n");
-        //             } else if (size == 4) {
-        //                 printf("  add dword ptr [rax], 1\n");
-        //                 printf("  movsx rax, dword ptr [rax]\n");
-        //             } else if (size == 8) {
-        //                 printf("  add qword ptr [rax], 1\n");
-        //                 printf("  mov rax, qword ptr [rax]\n");
-        //             } else if (size == 2) {
-        //                 printf("  add word ptr [rax], 1\n");
-        //                 printf("  movsx rax, word ptr [rax]\n");
-        //             } else {
-        //                 error("no reg size %d", size);
-        //             }
-        //         }
-        //     } else {
-        //         gen_lval(node->rhs);
-        //         if (node->type->ty == PTR) {
-        //             printf("  mov rdi, qword ptr [rax]\n");
-        //             printf("  add qword ptr [rax], %d\n", sizeof_parse(node->type->ptr_to));
-        //         } else {
-        //             size = sizeof_parse(node->type);
-        //             if (size == 1) {
-        //                 printf("  movzx rdi, byte ptr [rax]\n");
-        //                 printf("  add byte ptr [rax], 1\n");
-        //             } else if (size == 4) {
-        //                 printf("  movsx rdi, dword ptr [rax]\n");
-        //                 printf("  add dword ptr [rax], 1\n");
-        //             } else if (size == 8) {
-        //                 printf("  mov rdi, qword ptr [rax]\n");
-        //                 printf("  add qword ptr [rax], 1\n");
-        //             } else if (size == 2) {
-        //                 printf("  movsx rdi, word ptr [rax]\n");
-        //                 printf("  add word ptr [rax], 1\n");
-        //             } else {
-        //                 error("no reg size %d", size);
-        //             }
-        //         }
-        //         printf("  mov rax, rdi\n");
-        //     }
-        //     return;
-        // case ND_DECR:
-        //     if (node->lhs) {
-        //         gen_lval(node->lhs);
-        //         if (node->type->ty == PTR) {
-        //             printf("  sub qword ptr [rax], %d\n", sizeof_parse(node->type->ptr_to));
-        //             printf("  mov rax, qword ptr [rax]\n");
-        //         } else {
-        //             size = sizeof_parse(node->type);
-        //             if (size == 1) {
-        //                 printf("  sub byte ptr [rax], 1\n");
-        //                 printf("  movzx rax, byte ptr [rax]\n");
-        //             } else if (size == 4) {
-        //                 printf("  sub dword ptr [rax], 1\n");
-        //                 printf("  movsx rax, dword ptr [rax]\n");
-        //             } else if (size == 8) {
-        //                 printf("  sub qword ptr [rax], 1\n");
-        //                 printf("  mov rax, qword ptr [rax]\n");
-        //             } else if (size == 2) {
-        //                 printf("  sub word ptr [rax], 1\n");
-        //                 printf("  movsx rax, word ptr [rax]\n");
-        //             } else {
-        //                 error("no reg size %d", size);
-        //             }
-        //         }
-        //     } else {
-        //         gen_lval(node->rhs);
-        //         if (node->type->ty == PTR) {
-        //             printf("  mov rdi, qword ptr [rax]\n");
-        //             printf("  sub qword ptr [rax], %d\n", sizeof_parse(node->type->ptr_to));
-        //         } else {
-        //             size = sizeof_parse(node->type);
-        //             if (size == 1) {
-        //                 printf("  movzx rdi, byte ptr [rax]\n");
-        //                 printf("  sub byte ptr [rax], 1\n");
-        //             } else if (size == 4) {
-        //                 printf("  movsx rdi, dword ptr [rax]\n");
-        //                 printf("  sub dword ptr [rax], 1\n");
-        //             } else if (size == 8) {
-        //                 printf("  mov rdi, qword ptr [rax]\n");
-        //                 printf("  sub qword ptr [rax], 1\n");
-        //             } else if (size == 2) {
-        //                 printf("  movsx rdi, word ptr [rax]\n");
-        //                 printf("  sub word ptr [rax], 1\n");
-        //             } else {
-        //                 error("no reg size %d", size);
-        //             }
-        //         }
-        //         printf("  mov rax, rdi\n");
-        //     }
-        //     return;
+        case ND_NEG:
+            return add_op(IR_NEG, gen_ir(node->lhs), NULL);
+        case ND_NOT:
+            return add_op(IR_NOT, gen_ir(node->lhs), NULL);
+        case ND_BITNOT:
+            return add_op(IR_BITNOT, gen_ir(node->lhs), NULL);
+        case ND_INCR:
+            if (node->lhs) {
+                l = gen_lval_ir(node->lhs);
+                t = calloc(1, sizeof(Value));
+                t->num = l->num;
+                t->ty = V_DEREF;
+
+                inst = calloc(1, sizeof(Instruction));
+                inst->op = IR_ADD;
+                inst->lval = t;
+                inst->lhs = t;
+
+                r = calloc(1, sizeof(Value));
+                r->ty = V_NUM;
+                if (node->type->ty == PTR) {
+                    r->num = sizeof_parse(node->type->ptr_to);
+                } else {
+                    r->num = 1;
+                }
+
+                inst->rhs = r;
+                add_instruction(inst);
+                return add_op(IR_MOV, t, NULL);
+            } else {
+                l = gen_lval_ir(node->rhs);
+                t = calloc(1, sizeof(Value));
+                t->num = l->num;
+                t->ty = V_DEREF;
+
+                r = add_op(IR_MOV, t, NULL);
+
+                inst = calloc(1, sizeof(Instruction));
+                inst->op = IR_ADD;
+                inst->lval = t;
+                inst->lhs = t;
+
+                l = calloc(1, sizeof(Value));
+                l->ty = V_NUM;
+                if (node->type->ty == PTR) {
+                    l->num = sizeof_parse(node->type->ptr_to);
+                } else {
+                    l->num = 1;
+                }
+
+                inst->rhs = l;
+                add_instruction(inst);
+                return r;
+            }
+        case ND_DECR:
+            if (node->lhs) {
+                l = gen_lval_ir(node->lhs);
+                t = calloc(1, sizeof(Value));
+                t->num = l->num;
+                t->ty = V_DEREF;
+
+                inst = calloc(1, sizeof(Instruction));
+                inst->op = IR_SUB;
+                inst->lval = t;
+                inst->lhs = t;
+
+                r = calloc(1, sizeof(Value));
+                r->ty = V_NUM;
+                if (node->type->ty == PTR) {
+                    r->num = sizeof_parse(node->type->ptr_to);
+                } else {
+                    r->num = 1;
+                }
+
+                inst->rhs = r;
+                add_instruction(inst);
+                return add_op(IR_MOV, t, NULL);
+            } else {
+                l = gen_lval_ir(node->rhs);
+                t = calloc(1, sizeof(Value));
+                t->num = l->num;
+                t->ty = V_DEREF;
+
+                r = add_op(IR_MOV, t, NULL);
+
+                inst = calloc(1, sizeof(Instruction));
+                inst->op = IR_SUB;
+                inst->lval = t;
+                inst->lhs = t;
+
+                l = calloc(1, sizeof(Value));
+                l->ty = V_NUM;
+                if (node->type->ty == PTR) {
+                    l->num = sizeof_parse(node->type->ptr_to);
+                } else {
+                    l->num = 1;
+                }
+
+                inst->rhs = l;
+                add_instruction(inst);
+                return r;
+            }
         // case ND_BREAK:
         //     if (break_label == 0) {
         //         error("ループ外でbreakはできません");
