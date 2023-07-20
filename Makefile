@@ -1,5 +1,5 @@
 CFLAGS=-std=c11 -g
-SRCS=main.c parse.c tool.c codegen.c gen_ir.c  # $(wildcard *.c)
+SRCS=main.c parse.c tool.c codegen.c gen_ir.c regassign.c # $(wildcard *.c)
 OBJS=$(SRCS:.c=.o)
 ASMS=$(SRCS:.c=.s)
 GEN2ASMS=$(SRCS:.c=_2.s)

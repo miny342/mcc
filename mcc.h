@@ -234,6 +234,7 @@ Node *primary();
 
 typedef struct {
     Vec *blocks;
+    GVar *gvar; // 元となったGVar
 } Function;
 
 typedef struct {
@@ -291,8 +292,50 @@ typedef struct {
     Vec *args; // Value*の配列, regを想定
 } Instruction;
 
-void gen_global_ir();
+Vec *gen_global_ir();
 Value *gen_ir(Node *node);
+
+// regassign.c
+typedef struct {
+    int startblock;
+    int endblock;
+    int startline; // startblock内で
+    int endline;   // endblock内で
+    int is_used_by_phi; // phi関数に使われているか
+    int phi_to;    // phi関数に呼ばれていた場合のレジスタ番号
+    int num;       // 仮想レジスタ番号
+} RegisterInfo;
+
+typedef enum Register {
+    RAX,
+    RDI,
+    RSI,
+    RDX,
+    RCX,
+    R8,
+    R9,
+    R10,
+    R11,
+    RBP,  // callee start
+    RBX,
+    R12,
+    R13,
+    R14,
+    R15,  // reserved by spill
+} Register;
+
+#define REG_NUM R15 + 1
+#define CALLEE_REG RBP
+
+#define SPILL_RESERVED R15
+#define SPILLED R15 + 1
+
+extern char *use_qword_reg[REG_NUM];
+extern char *use_dword_reg[REG_NUM];
+extern char *use_word_reg[REG_NUM];
+extern char *use_byte_reg[REG_NUM];
+
+void gen_function(Vec *);
 
 // codegen.c
 void gen(Node *node);

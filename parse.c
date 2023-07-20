@@ -1253,11 +1253,11 @@ Type *eval_type_top() {
         }
         type = calloc(1, sizeof(Type));
         type->ty = STRUCT;
-        if (consume("{")) {
-            def_struct(type);
-        }
         if (tok) {
             strmapset(structmap, tok->str, tok->len, type);
+        }
+        if (consume("{")) {
+            def_struct(type);
         }
     } else if (consumeTK(TK_ENUM)) {
         Token *tok = consume_ident();

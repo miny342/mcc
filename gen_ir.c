@@ -145,35 +145,45 @@ void show_fn(Function *fn) {
     }
 }
 
-void gen_global_ir() {
-    GVar *data;
-    GVar **tmp = &data;
+// Vec<Function>
+Vec *gen_global_ir() {
+    GVar *data = code;
+    GVar **tmp = &code;
 
     Vec *functions = vec_new();
 
     Value *v;
-    for(; code; code = code->next) {
-        if (code->type->ty == FUNC && code->node) {
+    Instruction *inst;
+    for(; data; data = data->next) {
+        if (data->type->ty == FUNC && data->node) {
             fn = calloc(1, sizeof(Function));
+            fn->gvar = data;
             fn->blocks = vec_new();
             new_block();
 
-            used_reg = 1;
+            used_reg = 0;
 
-            gen_ir(code->node);
+            gen_ir(data->node);
 
             v = calloc(1, sizeof(Value));
             v->num = 0;
             v->ty = V_NUM;
 
-            add_op(IR_RETURN, v, NULL);
+            inst = calloc(1, sizeof(Instruction));
+            inst->lhs = v;
+            inst->op = IR_RETURN;
+            add_instruction(inst);
 
             push(functions, fn);
 
-            printe("fn %.*s\n", code->len, code->name);
+            printe("fn %.*s\n", data->len, data->name);
             show_fn(fn);
+        } else if (data->type->ty != FUNC) {
+            *tmp = data;
+            tmp = &data->next;
         }
     }
+    return functions;
 }
 
 // regにアドレスを入れて返す
@@ -321,7 +331,10 @@ Value *gen_ir(Node *node) {
     Instruction *inst;
     switch (node->kind) {
         case ND_RETURN:
-            add_op(IR_RETURN, gen_ir(node->lhs), NULL);
+            inst = calloc(1, sizeof(Instruction));
+            inst->lhs = gen_ir(node->lhs);
+            inst->op = IR_RETURN;
+            add_instruction(inst);
             return NULL;
         case ND_NUM:
             t = calloc(1, sizeof(Value));
@@ -409,7 +422,7 @@ Value *gen_ir(Node *node) {
                 *la1 = new_block();
                 r = gen_ir(node->rhs->rhs);
                 *la2 = new_block();
-                return add_op(IR_PHI, l, r);
+                if (l && r) return add_op(IR_PHI, l, r);
             } else {
                 r = gen_ir(node->rhs);
                 *la1 = new_block();
