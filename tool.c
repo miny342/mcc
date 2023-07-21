@@ -36,7 +36,7 @@ void grow(Vec *v) {
 }
 
 void *at(Vec *v, int i) {
-    if (i < 0 || v->len < i) {
+    if (i < 0 || v->len <= i) {
         error("index out of range");
     }
     return v->data[i];

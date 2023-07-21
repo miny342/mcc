@@ -1,5 +1,7 @@
 #include "libc_alternatives.h"
 
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+
 // tokenize.c
 
 
@@ -306,14 +308,15 @@ typedef struct {
     int num;       // 仮想レジスタ番号
 } RegisterInfo;
 
-typedef enum Register {
-    RAX,
-    RDI,
-    RSI,
-    RDX,
-    RCX,
-    R8,
-    R9,
+typedef enum {
+    ERR, // if use this, compiler bug
+    // RAX,  // 今は対応しない
+    // RDI,
+    // RSI,
+    // RDX,
+    // RCX,
+    // R8,
+    // R9,
     R10,
     R11,
     RBP,  // callee start
@@ -322,7 +325,7 @@ typedef enum Register {
     R13,
     R14,
     R15,  // reserved by spill
-} Register;
+} RegisterEnum;
 
 #define REG_NUM R15 + 1
 #define CALLEE_REG RBP

@@ -20,10 +20,22 @@ StrMap *enumkeymap;
 StrMap *typenamemap;
 StrMap *macromap;
 
-char *use_qword_reg[REG_NUM] = {"rax", "rdi", "rsi", "rdx", "rcx", "r8", "r9", "r10", "r11", "rbp", "rbx", "r12", "r13", "r14", "r15"};
-char *use_dword_reg[REG_NUM] = {"eax", "edi", "esi", "edx", "ecx", "r8d", "r9d", "r10d", "r11d", "ebp", "ebx", "r12d", "r13d", "r14d", "r15d"};
-char *use_word_reg[REG_NUM] = {"ax", "di", "si", "dx", "cx", "r8w", "r9w", "r10w", "r11w", "bp", "bx", "r12w", "r13w", "r14w", "r15w"};
-char *use_byte_reg[REG_NUM] = {"al", "dil", "sil", "dl", "cl", "r8b", "r9b", "r10b", "r11b", "bpl", "bl", "r12b", "r13b", "r14b", "r15b"};
+char *use_qword_reg[REG_NUM] = {"err",
+    // "rax", "rdi", "rsi", "rdx", "rcx", "r8", "r9",
+    "r10", "r11", "rbp", "rbx", "r12", "r13", "r14", "r15"
+};
+char *use_dword_reg[REG_NUM] = {"errd",
+    // "eax", "edi", "esi", "edx", "ecx", "r8d", "r9d",
+    "r10d", "r11d", "ebp", "ebx", "r12d", "r13d", "r14d", "r15d"
+};
+char *use_word_reg[REG_NUM] = {"errw",
+    // "ax", "di", "si", "dx", "cx", "r8w", "r9w",
+    "r10w", "r11w", "bp", "bx", "r12w", "r13w", "r14w", "r15w"
+};
+char *use_byte_reg[REG_NUM] = {"errb",
+    // "al", "dil", "sil", "dl", "cl", "r8b", "r9b",
+    "r10b", "r11b", "bpl", "bl", "r12b", "r13b", "r14b", "r15b"
+};
 
 int main(int argc, char **argv){
     if (argc != 2) {

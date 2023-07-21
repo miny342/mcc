@@ -41,7 +41,7 @@ int t0() {
 
 // int t5(int a, int b) {
 //     int x = a && b;
-//     int y = a || b;
+//     int y = a ? b ? a ? b ? 3 : 1 : 2 : 3 : 4;
 // }
 
 // int t6(int a) {
