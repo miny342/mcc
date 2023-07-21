@@ -53,51 +53,51 @@ char *acc_regs(int size) {
 
 void gen_global() {
     // アセンブリの前半部分を出力
-    printf(".intel_syntax noprefix\n");
+    // printf(".intel_syntax noprefix\n");
 
     // コンパイラのバグ検出用
     // rspが16の倍数か検証し、そうでない場合exit(2)を呼ぶ
-    printf("__checkrsp:\n  push rdi\n  mov rdi, rsp\n  and rdi, 15\n  test rdi, rdi\n  je .checkrsp\n  mov rdi, 2\n  call exit\n.checkrsp:\n  pop rdi\n  ret\n");
+    // printf("__checkrsp:\n  push rdi\n  mov rdi, rsp\n  and rdi, 15\n  test rdi, rdi\n  je .checkrsp\n  mov rdi, 2\n  call exit\n.checkrsp:\n  pop rdi\n  ret\n");
 
     GVar *data;
     GVar **tmp = &data;
 
     for(; code; code = code->next) {
         if (code->type->ty == FUNC && code->node) {
-            Type *type = code->type;
-            if (!code->is_static) {
-                printf(".globl %.*s\n", code->len, code->name);
-            }
-            printf("%.*s:\n", code->len, code->name);
+            // Type *type = code->type;
+            // if (!code->is_static) {
+            //     printf(".globl %.*s\n", code->len, code->name);
+            // }
+            // printf("%.*s:\n", code->len, code->name);
 
-            // prologue
-            printf("  push rbp\n");
-            printf("  mov rbp, rsp\n");
+            // // prologue
+            // printf("  push rbp\n");
+            // printf("  mov rbp, rsp\n");
 
-            int sub = (code->offset) + (16 - code->offset % 16) % 16;
-            if (sub > 0)
-                printf("  sub rsp, %d\n", sub);
+            // int sub = (code->offset) + (16 - code->offset % 16) % 16;
+            // if (sub > 0)
+            //     printf("  sub rsp, %d\n", sub);
 
-            Vec *args = type->args;
-            int argnum = args->len;
-            if (argnum > 0) {
-                Type *ty = args->data[argnum - 1];
-                if (ty->ty == VA_ARGS || argnum > 6) {
-                    argnum = 6;
-                }
-            }
-            int offset = argnum * 8;
-            for(int i = 0; i < argnum; i++) {
-                printf("  mov qword ptr [rbp-%d], %s\n", offset, qword_reg[i]);
-                offset -= 8;
-            }
+            // Vec *args = type->args;
+            // int argnum = args->len;
+            // if (argnum > 0) {
+            //     Type *ty = args->data[argnum - 1];
+            //     if (ty->ty == VA_ARGS || argnum > 6) {
+            //         argnum = 6;
+            //     }
+            // }
+            // int offset = argnum * 8;
+            // for(int i = 0; i < argnum; i++) {
+            //     printf("  mov qword ptr [rbp-%d], %s\n", offset, qword_reg[i]);
+            //     offset -= 8;
+            // }
 
-            gen(code->node);
+            // gen(code->node);
 
-            // epilogue
-            printf("  xor eax, eax\n");
-            printf("  leave\n");
-            printf("  ret\n");
+            // // epilogue
+            // printf("  xor eax, eax\n");
+            // printf("  leave\n");
+            // printf("  ret\n");
         } else if (code->type->ty != FUNC) {
             *tmp = code;
             tmp = &code->next;
@@ -711,4 +711,403 @@ void gen(Node *node) {
             printf("  xor rax, rdi\n");
             break;
     }
+}
+
+char **use_reg_size(int size) {
+    switch (size) {
+        case 1:
+            return use_byte_reg;
+        case 2:
+            return use_word_reg;
+        case 4:
+            return use_dword_reg;
+        case 8:
+            return use_qword_reg;
+        default:
+            error("use reg size error");
+    }
+}
+
+// regnumは使用する物理レジスタの番号
+// offsetはpushしたレジスタの個数*8
+void gen_value(Value *v, int regnum, int offset, int size) {
+    if (regnum == ERR || regnum >= SPILLED) {
+        switch (v->ty) {
+            case V_LVAR:
+                printf("%s [rsp+%d]", ptr_name(size), offset - v->lvar->offset);
+                break;
+            case V_GVAR:
+                printf("%.*s[rip]", v->gvar->len, v->gvar->name);
+                break;
+            case V_NUM:
+                printf("%d", v->num);
+                break;
+            case V_STR:
+                printf(".LC%d[rip]", v->num);
+                break;
+            default:
+                error("regnum not set or spilled(not implemented)");
+        }
+    } else {
+        switch (v->ty) {
+            case V_REG:
+                printf("%s", use_reg_size(size)[regnum]);
+                break;
+            case V_DEREF:
+                printf("%s [%s]", ptr_name(size), use_qword_reg[regnum]);
+                break;
+            default:
+                error("regnum setted, but this is not vreg or vderef");
+        }
+    }
+}
+
+void fflush();
+
+int pprintf(char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+
+    int i = vfprintf(stdout, fmt, ap);
+    fflush(stdout);
+    return i;
+}
+
+#define printf pprintf
+
+// どちらもVREGのときだけ
+void lhs_to_lval(Value *lval, Value *lhs, int lval_reg, int lhs_reg, int offset) {
+    if (lval && lval->ty == V_REG && lhs && lhs->ty == V_REG && lval_reg != lhs_reg) {
+        printf("  mov %s, %s\n", use_qword_reg[lval_reg], use_qword_reg[lhs_reg]);
+    }
+}
+
+void gen_instruction(Instruction *inst, int *virt_to_real, int offset) {
+    int lval_reg = (inst->lval && (inst->lval->ty == V_REG || inst->lval->ty == V_DEREF)) ? virt_to_real[inst->lval->num] : ERR;
+    int lhs_reg = (inst->lhs && (inst->lhs->ty == V_REG || inst->lhs->ty == V_DEREF)) ? virt_to_real[inst->lhs->num] : ERR;
+    int rhs_reg = (inst->rhs && (inst->rhs->ty == V_REG || inst->rhs->ty == V_DEREF)) ? virt_to_real[inst->rhs->num] : ERR;
+
+    Value *v;
+    int size;
+    switch (inst->op) {
+        case IR_ADD:
+            lhs_to_lval(inst->lval, inst->lhs, lval_reg, lhs_reg, offset);
+            printf("  add ");
+            gen_value(inst->lval, lval_reg, offset, 8);
+            printf(", ");
+            gen_value(inst->rhs, rhs_reg, offset, 8);
+            printf("\n");
+            break;
+        case IR_SUB:
+            lhs_to_lval(inst->lval, inst->lhs, lval_reg, lhs_reg, offset);
+            printf("  sub ");
+            gen_value(inst->lval, lval_reg, offset, 8);
+            printf(", ");
+            gen_value(inst->rhs, rhs_reg, offset, 8);
+            printf("\n");
+            break;
+        case IR_MUL:
+            lhs_to_lval(inst->lval, inst->lhs, lval_reg, lhs_reg, offset);
+            printf("  imul ");
+            gen_value(inst->lval, lval_reg, offset, 8);
+            printf(", ");
+            gen_value(inst->rhs, rhs_reg, offset, 8);
+            printf("\n");
+            break;
+        case IR_DIV:
+            printf("  mov rax, ");
+            gen_value(inst->lhs, lhs_reg, offset, 8);
+            printf("\n");
+            printf("  cqo\n");
+            printf("  idiv ");
+            gen_value(inst->rhs, rhs_reg, offset, 8);
+            printf("\n");
+            printf("  mov ");
+            gen_value(inst->lval, lval_reg, offset, 8);
+            printf(", rax\n");
+            break;
+        case IR_EQ:
+            printf("  cmp ");
+            gen_value(inst->lhs, lhs_reg, offset, 8);
+            printf(", ");
+            gen_value(inst->rhs, rhs_reg, offset, 8);
+            printf("\n");
+            printf("  sete al\n");
+            printf("  movzb ");
+            gen_value(inst->lval, lval_reg, offset, 8);
+            printf(", al\n");
+            break;
+        case IR_NE:
+            printf("  cmp ");
+            gen_value(inst->lhs, lhs_reg, offset, 8);
+            printf(", ");
+            gen_value(inst->rhs, rhs_reg, offset, 8);
+            printf("\n");
+            printf("  setne al\n");
+            printf("  movzb ");
+            gen_value(inst->lval, lval_reg, offset, 8);
+            printf(", al\n");
+            break;
+        case IR_LE:
+            printf("  cmp ");
+            gen_value(inst->lhs, lhs_reg, offset, 8);
+            printf(", ");
+            gen_value(inst->rhs, rhs_reg, offset, 8);
+            printf("\n");
+            printf("  setle al\n");
+            printf("  movzb ");
+            gen_value(inst->lval, lval_reg, offset, 8);
+            printf(", al\n");
+            break;
+        case IR_LT:
+            printf("  cmp ");
+            gen_value(inst->lhs, lhs_reg, offset, 8);
+            printf(", ");
+            gen_value(inst->rhs, rhs_reg, offset, 8);
+            printf("\n");
+            printf("  setl al\n");
+            printf("  movzb ");
+            gen_value(inst->lval, lval_reg, offset, 8);
+            printf(", al\n");
+            break;
+        case IR_IF_EQ_0:
+            printf("  cmp ");
+            gen_value(inst->lhs, lhs_reg, offset, 8);
+            printf(", 0\n");
+            printf("  je .L%d\n", labelcnt + *inst->to);
+            break;
+        case IR_IF_NE_0:
+            printf("  cmp ");
+            gen_value(inst->lhs, lhs_reg, offset, 8);
+            printf(", 0\n");
+            printf("  jne .L%d\n", labelcnt + *inst->to);
+            break;
+        case IR_CALL:
+            for (int i = 0; i < inst->args->len && i < 6; i++) {
+                v = inst->args->data[i];
+                printf("  mov %s, ", qword_reg[i]);
+                gen_value(v, virt_to_real[v->num], offset, 8);
+                printf("\n");
+            }
+            if (inst->args->len > 6 && inst->args->len % 2 == 1) {
+                printf("  sub rsp, 8\n");
+            }
+            for (int i = inst->args->len; i >= 6; i--) {
+                v = inst->args->data[i];
+                printf("  push ");
+                gen_value(v, virt_to_real[v->num], offset, 8);
+                printf("\n");
+            }
+
+            printf("  xor eax, eax\n");
+            printf("  call ");
+            if (inst->lhs->ty == V_GVAR) {
+                printf("%.*s\n", inst->lhs->gvar->len, inst->lhs->gvar->name);
+            } else {
+                gen_value(inst->lhs, virt_to_real[inst->lhs->num], offset, 8);
+                printf("\n");
+            }
+
+            if (inst->args->len > 6) {
+                printf("  add rsp, %d\n", (inst->args->len % 2 ? 8 : 0) + (inst->args->len - 6) * 8);
+            }
+
+            printf("  mov ");
+            gen_value(inst->lval, lval_reg, offset, 8);
+            printf(", rax\n");
+            break;
+        case IR_ADDR:
+            printf("  lea ");
+            gen_value(inst->lval, lval_reg, offset, 8);
+            printf(", ");
+            gen_value(inst->lhs, lhs_reg, offset, 8);
+            printf("\n");
+            break;
+        case IR_REMINDER:
+            printf("  mov rax, ");
+            gen_value(inst->lhs, lhs_reg, offset, 8);
+            printf("\n");
+            printf("  cqo\n");
+            printf("  idiv ");
+            gen_value(inst->rhs, rhs_reg, offset, 8);
+            printf("\n");
+            printf("  mov ");
+            gen_value(inst->lval, lval_reg, offset, 8);
+            printf(", rdx\n");
+            break;
+        case IR_LSHIFT:
+            lhs_to_lval(inst->lval, inst->lhs, lval_reg, lhs_reg, offset);
+            printf("  mov rcx, ");
+            gen_value(inst->rhs, rhs_reg, offset, 8);
+            printf("\n");
+            printf("  shl ");
+            gen_value(inst->lval, lval_reg, offset, 8);
+            printf(", cl\n");
+            break;
+        case IR_RSHIFT:
+            lhs_to_lval(inst->lval, inst->lhs, lval_reg, lhs_reg, offset);
+            printf("  mov rcx, ");
+            gen_value(inst->rhs, rhs_reg, offset, 8);
+            printf("\n");
+            printf("  sar ");
+            gen_value(inst->lval, lval_reg, offset, 8);
+            printf(", cl\n");
+            break;
+        case IR_BITAND:
+            lhs_to_lval(inst->lval, inst->lhs, lval_reg, lhs_reg, offset);
+            printf("  and ");
+            gen_value(inst->lval, lval_reg, offset, 8);
+            printf(", ");
+            gen_value(inst->rhs, rhs_reg, offset, 8);
+            printf("\n");
+            break;
+        case IR_BITXOR:
+            lhs_to_lval(inst->lval, inst->lhs, lval_reg, lhs_reg, offset);
+            printf("  xor ");
+            gen_value(inst->lval, lval_reg, offset, 8);
+            printf(", ");
+            gen_value(inst->rhs, rhs_reg, offset, 8);
+            printf("\n");
+            break;
+        case IR_BITOR:
+            lhs_to_lval(inst->lval, inst->lhs, lval_reg, lhs_reg, offset);
+            printf("  or ");
+            gen_value(inst->lval, lval_reg, offset, 8);
+            printf(", ");
+            gen_value(inst->rhs, rhs_reg, offset, 8);
+            printf("\n");
+            break;
+        case IR_NEG:
+            lhs_to_lval(inst->lval, inst->lhs, lval_reg, lhs_reg, offset);
+            printf("  neg ");
+            gen_value(inst->lval, lval_reg, offset, 8);
+            printf("\n");
+            break;
+        case IR_BITNOT:
+            lhs_to_lval(inst->lval, inst->lhs, lval_reg, lhs_reg, offset);
+            printf("  not ");
+            gen_value(inst->lval, lval_reg, offset, 8);
+            printf("\n");
+            break;
+        case IR_NOT:
+            printf("  test ");
+            gen_value(inst->lhs, lhs_reg, offset, 8);
+            printf(", ");
+            gen_value(inst->lhs, lhs_reg, offset, 8);
+            printf("\n");
+            printf("  sete al\n");
+            printf("  movzb ");
+            gen_value(inst->lval, lval_reg, offset, 8);
+            printf(", al\n");
+            break;
+        case IR_MOV:
+            size = sizeof_parse(inst->lval->type);
+            if (inst->lval->ty == V_REG && inst->lhs->ty != V_NUM) {
+                if (size == 1) {
+                    printf("  movzb ");
+                } else if (size == 2 || size == 4) {
+                    printf("  movsx ");
+                } else {
+                    printf("  mov ");
+                }
+                gen_value(inst->lval, lval_reg, offset, 8);
+            } else if (inst->lhs->ty == V_NUM) {
+                printf("  mov ");
+                gen_value(inst->lval, lval_reg, offset, 8);
+            } else {
+                printf("  mov ");
+                gen_value(inst->lval, lval_reg, offset, size);
+            }
+            printf(", ");
+            gen_value(inst->lhs, lhs_reg, offset, size);
+            printf("\n");
+            break;
+        case IR_GOTO:
+            printf("  jmp .L%d\n", labelcnt + *inst->to);
+            break;
+        case IR_PHI:
+            break;
+        case IR_RETURN:
+            if (inst->lhs) {
+                printf("  mov rax, ");
+                gen_value(inst->lhs, lhs_reg, offset, 8);
+                printf("\n");
+            }
+            printf("  jmp .L%d\n", labelcnt);
+            break;
+        default:
+            error("cannot instruction gen");
+    }
+}
+
+void gen_function(Function *f) {
+    int *virt_to_real;
+    int max_use_reg = assign_register(f, &virt_to_real);
+
+    Type *type = f->gvar->type;
+
+    if (!f->gvar->is_static) {
+        printf(".globl %.*s\n", f->gvar->len, f->gvar->name);
+    }
+    printf("%.*s:\n", f->gvar->len, f->gvar->name);
+
+
+    // prologue
+    int sub = f->gvar->offset;
+
+    if (max_use_reg >= CALLEE_REG && (max_use_reg & 1) == 1) {
+        // pushするレジスタが奇数なら引く数は16の倍数にする
+        sub = sub + ((16 - (sub & 15)) & 15);
+    } else if ((max_use_reg < CALLEE_REG || (max_use_reg & 1) == 0) && sub <= 8) {
+        // 8以下なら8
+        sub = 8;
+    } else {
+        // 8引いた物を16の倍数に揃えて、8を足す
+        sub -= 8;
+        sub = sub + ((16 - (sub & 15)) & 15);
+        sub += 8;
+    }
+    printf("  sub rsp, %d\n", sub);
+
+    int offset = sub;
+
+    for (int reg = CALLEE_REG; reg <= max_use_reg; reg++) {
+        printf("  push %s\n", use_qword_reg[reg]);
+        offset += 8;
+    }
+
+    Vec *args = type->args;
+    int argnum = args->len;
+    if (argnum > 0) {
+        Type *ty = args->data[argnum - 1];
+        if (ty->ty ==VA_ARGS || argnum > 6) {
+            argnum = 6;
+        }
+    }
+    for (int i = 0; i < argnum; i++) {
+        printf("  mov qword ptr [rsp+%d], %s\n", offset - 8 * (argnum - i), qword_reg[i]);
+    }
+
+    for (int block_index = 0; block_index < f->blocks->len; block_index++) {
+        if (block_index) {
+            printf(".L%d:\n", labelcnt + block_index);
+        }
+        Block *blk = f->blocks->data[block_index];
+        for (int inst_index = 0; inst_index < blk->instructions->len; inst_index++) {
+            Instruction *inst = blk->instructions->data[inst_index];
+            gen_instruction(inst, virt_to_real, offset);
+        }
+    }
+
+    // epilogue
+    printf("  mov rax, 0\n");
+    printf(".L%d:\n", labelcnt);
+    for (int reg = max_use_reg; reg >= CALLEE_REG; reg--) {
+        printf("  pop %s\n", use_qword_reg[reg]);
+    }
+
+    printf("  add rsp, %d\n", sub);
+    printf("  ret\n");
+
+    labelcnt += f->blocks->len;
 }

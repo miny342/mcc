@@ -34,6 +34,7 @@ Value *add_op(InstructionOP op, Value *reg1, Value *reg2) {
     ir->rhs = reg2;
     ir->op = op;
     ir->lval = reg_value(used_reg++);
+    ir->lval->type = reg1->type; // とりあえず
     add_instruction(ir);
     return ir->lval;
 }
@@ -165,14 +166,14 @@ Vec *gen_global_ir() {
 
             gen_ir(data->node);
 
-            v = calloc(1, sizeof(Value));
-            v->num = 0;
-            v->ty = V_NUM;
+            // v = calloc(1, sizeof(Value));
+            // v->num = 0;
+            // v->ty = V_NUM;
 
-            inst = calloc(1, sizeof(Instruction));
-            inst->lhs = v;
-            inst->op = IR_RETURN;
-            add_instruction(inst);
+            // inst = calloc(1, sizeof(Instruction));
+            // inst->lhs = v;
+            // inst->op = IR_RETURN;
+            // add_instruction(inst);
 
             push(functions, fn);
 
@@ -194,6 +195,9 @@ Value *gen_lval_ir(Node *node) {
     }
     v = calloc(1, sizeof(Value));
     res = add_op(IR_ADDR, v, NULL);
+    res->type = calloc(1, sizeof(Type));
+    res->type->ptr_to = node->type;
+    res->type->ty = PTR;
     if (node->kind == ND_GVAR) {
         v->ty = V_GVAR;
         v->gvar = node->gvar;
@@ -243,6 +247,7 @@ Value *gen_call_ir(Node *node) {
         inst->lhs = val;
     }
     inst->lval = reg_value(used_reg++);
+    inst->lval->type = node->type;
     add_instruction(inst);
     return inst->lval;
 }
@@ -340,6 +345,8 @@ Value *gen_ir(Node *node) {
             t = calloc(1, sizeof(Value));
             t->ty = V_NUM;
             t->num = node->val;
+            t->type = calloc(1, sizeof(Type));
+            t->type->ty = INT;
             return add_op(IR_MOV, t, NULL);
         case ND_LVAR:
             l = gen_lval_ir(node);
@@ -351,6 +358,7 @@ Value *gen_ir(Node *node) {
             t = calloc(1, sizeof(Value));
             t->num = l->num;
             t->ty = V_DEREF;
+            t->type = node->lvar->type;
 
             return add_op(IR_MOV, t, NULL);
         case ND_ASSIGN:
@@ -360,6 +368,7 @@ Value *gen_ir(Node *node) {
             t = calloc(1, sizeof(Value));
             t->num = l->num;
             t->ty = V_DEREF;
+            t->type = node->lhs->type;
 
             inst = calloc(1, sizeof(Instruction));
             inst->lval = t;
@@ -476,9 +485,14 @@ Value *gen_ir(Node *node) {
         case ND_DEREF:
             l = gen_ir(node->lhs);
 
+            if (node->type->ty == ARRAY) {
+                return l;
+            }
+
             t = calloc(1, sizeof(Value));
             t->num = l->num;
             t->ty = V_DEREF;
+            t->type = node->lhs->type->ptr_to;
 
             return add_op(IR_MOV, t, NULL);
         case ND_GVAR:
@@ -491,14 +505,19 @@ Value *gen_ir(Node *node) {
             t = calloc(1, sizeof(Value));
             t->num = l->num;
             t->ty = V_DEREF;
+            t->type = node->gvar->type;
 
             return add_op(IR_MOV, t, NULL);
         case ND_STR:
             t = calloc(1, sizeof(Value));
             t->ty = V_STR;
             t->num = node->s->offset;
+            t->type = calloc(1, sizeof(Type));
+            t->type->ty = PTR;
+            t->type->ptr_to = calloc(1, sizeof(Type));
+            t->type->ptr_to->ty = CHAR;
 
-            return add_op(IR_MOV, t, NULL);
+            return add_op(IR_ADDR, t, NULL);
         case ND_AND:
             la1 = malloc(sizeof(int));
             la2 = malloc(sizeof(int));
@@ -523,6 +542,8 @@ Value *gen_ir(Node *node) {
             t = calloc(1, sizeof(Value));
             t->num = 1;
             t->ty = V_NUM;
+            t->type = calloc(1, sizeof(Type));
+            t->type->ty = INT;
 
             l = add_op(IR_MOV, t, NULL);
 
@@ -536,6 +557,8 @@ Value *gen_ir(Node *node) {
             t = calloc(1, sizeof(Value));
             t->num = 0;
             t->ty = V_NUM;
+            t->type = calloc(1, sizeof(Type));
+            t->type->ty = INT;
 
             r = add_op(IR_MOV, t, NULL);
 
@@ -566,6 +589,8 @@ Value *gen_ir(Node *node) {
             t = calloc(1, sizeof(Value));
             t->num = 0;
             t->ty = V_NUM;
+            t->type = calloc(1, sizeof(Type));
+            t->type->ty = INT;
 
             l = add_op(IR_MOV, t, NULL);
 
@@ -579,6 +604,8 @@ Value *gen_ir(Node *node) {
             t = calloc(1, sizeof(Value));
             t->num = 1;
             t->ty = V_NUM;
+            t->type = calloc(1, sizeof(Type));
+            t->type->ty = INT;
 
             r = add_op(IR_MOV, t, NULL);
 
@@ -600,6 +627,7 @@ Value *gen_ir(Node *node) {
                 t = calloc(1, sizeof(Value));
                 t->num = l->num;
                 t->ty = V_DEREF;
+                t->type = node->type;
 
                 inst = calloc(1, sizeof(Instruction));
                 inst->op = IR_ADD;
@@ -622,6 +650,7 @@ Value *gen_ir(Node *node) {
                 t = calloc(1, sizeof(Value));
                 t->num = l->num;
                 t->ty = V_DEREF;
+                t->type = node->type;
 
                 r = add_op(IR_MOV, t, NULL);
 
@@ -648,6 +677,7 @@ Value *gen_ir(Node *node) {
                 t = calloc(1, sizeof(Value));
                 t->num = l->num;
                 t->ty = V_DEREF;
+                t->type = node->type;
 
                 inst = calloc(1, sizeof(Instruction));
                 inst->op = IR_SUB;
@@ -670,6 +700,7 @@ Value *gen_ir(Node *node) {
                 t = calloc(1, sizeof(Value));
                 t->num = l->num;
                 t->ty = V_DEREF;
+                t->type = node->type;
 
                 r = add_op(IR_MOV, t, NULL);
 

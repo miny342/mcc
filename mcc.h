@@ -255,6 +255,7 @@ typedef struct {
     int num; // V_REG || V_NUM || V_STR || V_DEREF
     LVar *lvar;
     GVar *gvar;
+    Type *type;
 } Value;
 
 typedef enum {
@@ -338,12 +339,14 @@ extern char *use_dword_reg[REG_NUM];
 extern char *use_word_reg[REG_NUM];
 extern char *use_byte_reg[REG_NUM];
 
-void gen_function(Vec *);
+int assign_register(Function *f, int **);
 
 // codegen.c
 void gen(Node *node);
 void gen_global();
 int gen_gvar(Node *node);
+
+void gen_function(Function *f);
 
 extern int labelcnt;
 extern int continue_label; // 0ならループ外、1ならループ内、それ以外はジャンプ先

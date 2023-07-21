@@ -114,12 +114,19 @@ int reg_assign(Function *f, Vec *reg_info, int *virtreg_to_realreg) {
             }
 
             // argsを解放できるなら解放
+            // caller saveを保持する必要があるなら、エラーを吐く
             if (inst->op == IR_CALL) {
                 for (int i = 0; i < inst->args->len; i++) {
                     Value *v = inst->args->data[i];
                     RegisterInfo *arg_info = at(reg_info, v->num);
                     if (arg_info->endblock == block_index && arg_info->endline == instruction_index) {
                         realreg[virtreg_to_realreg[arg_info->num]] = NULL;
+                    }
+                }
+                for (int i = 1; i < REG_NUM; i++) {
+                    RegisterInfo *info = realreg[i];
+                    if (info && ((info->endblock > block_index) || (info->endblock == block_index && info->endline > instruction_index))) {
+                        error("caller saveの保持は未実装です");
                     }
                 }
             }
@@ -202,13 +209,14 @@ int reg_assign(Function *f, Vec *reg_info, int *virtreg_to_realreg) {
     return max_used_reg;
 }
 
-void gen_function(Vec *funcs) {
-    Function *f = at(funcs, 0);
+int assign_register(Function *f, int **virt_to_real) {
     Vec *info = calc_reginfo(f);
     int *virtreg_to_realreg = malloc(sizeof(int) * info->len);
     int v = reg_assign(f, info, virtreg_to_realreg);
-    for (int i = 0; i < info->len; i++) {
-        printf("r%d: %d\n", i, virtreg_to_realreg[i]);
-    }
-    printf("max: %d\n", v);
+    *virt_to_real = virtreg_to_realreg;
+    return v;
+    // for (int i = 0; i < info->len; i++) {
+    //     printf("r%d: %d\n", i, virtreg_to_realreg[i]);
+    // }
+    // printf("max: %d\n", v);
 }

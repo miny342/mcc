@@ -72,7 +72,10 @@ int main(int argc, char **argv){
 
     Vec *functions = gen_global_ir();
 
-    // gen_global();
-    gen_function(functions);
+    printf(".intel_syntax noprefix\n");
+    for (int i = 0; i < functions->len; i++) {
+        gen_function(functions->data[i]);
+    }
+    gen_global();
     return 0;
 }
