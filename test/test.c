@@ -55,13 +55,13 @@ assert(t19, {
     return current;
 }, 233)
 
-// int t20_fib(int i) {
-//     if (i <= 0) return 0;
-//     if (i == 1) return 1;
-//     if (i == 2) return 1;
-//     return t20_fib(i - 1) + t20_fib(i - 2);
-// }
-// assert(t20, {return t20_fib(13);}, 233)
+int t20_fib(int i) {
+    if (i <= 0) return 0;
+    if (i == 1) return 1;
+    if (i == 2) return 1;
+    return t20_fib(i - 1) + t20_fib(i - 2);
+}
+assert(t20, {return t20_fib(13);}, 233)
 
 
 assert(t21, {int x; int *y; x = 3; y = &x; return *y;}, 3)
@@ -150,65 +150,65 @@ assert(t32, {
     for(; i < 4; i = i + 1) {}
 }, 0)
 
-// char mul(char l, char r) {
-//     char re;
-//     char v;
-//     re = 0;
-//     v = r;
-//     while(l) {
-//         if (l & 1) {
-//             re = re ^ v;
-//         }
-//         if (v & (1 << 7)) {
-//             v = (v << 1) ^ 27;
-//         } else {
-//             v = v << 1;
-//         }
-//         l = l >> 1;
-//     }
-//     return re;
-// }
-// char rotl(char v, int c) {
-//     return v << c | v >> (8 - c);
-// }
-// assert(t33, {
-//     char expt[256];
-//     char logt[256];
-//     char v;
-//     v = 1;
-//     int i;
-//     for(i = 0; i < 256; i = i + 1) {
-//         expt[i] = v;
-//         logt[v] = i;
-//         v = mul(3, v);
-//     }
-//     char sb[256];
-//     char inv;
-//     sb[0] = 99;
-//     for(i = 1; i < 256; i = i + 1) {
-//         inv = expt[255 - logt[i]];
-//         sb[i] = inv ^ rotl(inv, 1) ^ rotl(inv, 2) ^ rotl(inv, 3) ^ rotl(inv, 4) ^ 99;
-//     }
-//     return sb[134];
-// }, 68)  // unsigned char型とみているので問題が出ない
-// assert(t34, {
-//     int mod;
-//     mod = 1000000007;
-//     int r;
-//     int x;
-//     int n;
-//     n = 1000;
-//     r = 1;
-//     x = 2;
-//     while (n) {
-//         if (n & 1) {
-//             r = r * x % mod;
-//         }
-//         x = x * x % mod;
-//         n = n >> 1;
-//     }
-//     return r;
-// }, 688423210) // 裏ではすべて64bitレジスタで計算するため、オーバーフローしない
+char mul(char l, char r) {
+    char re;
+    char v;
+    re = 0;
+    v = r;
+    while(l) {
+        if (l & 1) {
+            re = re ^ v;
+        }
+        if (v & (1 << 7)) {
+            v = (v << 1) ^ 27;
+        } else {
+            v = v << 1;
+        }
+        l = l >> 1;
+    }
+    return re;
+}
+char rotl(char v, int c) {
+    return v << c | v >> (8 - c);
+}
+assert(t33, {
+    char expt[256];
+    char logt[256];
+    char v;
+    v = 1;
+    int i;
+    for(i = 0; i < 256; i = i + 1) {
+        expt[i] = v;
+        logt[v] = i;
+        v = mul(3, v);
+    }
+    char sb[256];
+    char inv;
+    sb[0] = 99;
+    for(i = 1; i < 256; i = i + 1) {
+        inv = expt[255 - logt[i]];
+        sb[i] = inv ^ rotl(inv, 1) ^ rotl(inv, 2) ^ rotl(inv, 3) ^ rotl(inv, 4) ^ 99;
+    }
+    return sb[134];
+}, 68)  // unsigned char型とみているので問題が出ない
+assert(t34, {
+    int mod;
+    mod = 1000000007;
+    int r;
+    int x;
+    int n;
+    n = 1000;
+    r = 1;
+    x = 2;
+    while (n) {
+        if (n & 1) {
+            r = r * x % mod;
+        }
+        x = x * x % mod;
+        n = n >> 1;
+    }
+    return r;
+}, 688423210) // 裏ではすべて64bitレジスタで計算するため、オーバーフローしない
 assert(t35, {return 6 && 8;}, 1)
 assert(t36, {return 0 && 2;}, 0)
 assert(t37, {return 3 && 0;}, 0)
@@ -402,13 +402,9 @@ int (*ffn)() = t0_assert + 1;
 
 int main() {
     t0();t1();t2();t3();t4();t5();t6();t7();t8();t9();t10();
-    t11();t12();t13();t14();t15();t16();t17();t18();t19();
-    // t20();
+    t11();t12();t13();t14();t15();t16();t17();t18();t19();t20();
     t21();t23();t24();t25();t26();t27();t28();t29();t30();
-    t31();t32();
-    // t33();
-    // t34();
-    t35();t36();t37();t38();t39();t40();
+    t31();t32();t33();t34();t35();t36();t37();t38();t39();t40();
     t41();t42();t43();t44();t45();t46();t47();t48();t49();t50();
     t51();t52();t53();t54();
     // t55();

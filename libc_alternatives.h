@@ -42,6 +42,7 @@ int strncmp(char *s1, char *s2, size_t n);
 char *strstr(char *haystack, char *needle);
 char *strchr(char *s, int c);
 void *memcpy(void *dest, void *src, size_t n);
+void *memset(void *s, int c, size_t n);
 
 int *__errno_location(void);
 #define errno (*__errno_location())

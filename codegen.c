@@ -762,18 +762,18 @@ void gen_value(Value *v, int regnum, int offset, int size) {
     }
 }
 
-void fflush();
+// void fflush();
 
-int pprintf(char *fmt, ...) {
-    va_list ap;
-    va_start(ap, fmt);
+// int pprintf(char *fmt, ...) {
+//     va_list ap;
+//     va_start(ap, fmt);
 
-    int i = vfprintf(stdout, fmt, ap);
-    fflush(stdout);
-    return i;
-}
+//     int i = vfprintf(stdout, fmt, ap);
+//     fflush(stdout);
+//     return i;
+// }
 
-#define printf pprintf
+// #define printf pprintf
 
 // どちらもVREGのときだけ
 void lhs_to_lval(Value *lval, Value *lhs, int lval_reg, int lhs_reg, int offset) {
@@ -892,7 +892,7 @@ void gen_instruction(Instruction *inst, int *virt_to_real, int offset) {
             if (inst->args->len > 6 && inst->args->len % 2 == 1) {
                 printf("  sub rsp, 8\n");
             }
-            for (int i = inst->args->len; i >= 6; i--) {
+            for (int i = inst->args->len - 1; i >= 6; i--) {
                 v = inst->args->data[i];
                 printf("  push ");
                 gen_value(v, virt_to_real[v->num], offset, 8);

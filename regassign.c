@@ -92,8 +92,15 @@ void show_reginfo(Vec *reginfo) {
     fprintf(stderr, "end\n");
 }
 
+typedef struct {
+    RegisterInfo *info;
+    int prev_used_block;  // 使用されていた期間
+    int prev_used_inst;
+} RealRegInfo;
+
 int reg_assign(Function *f, Vec *reg_info, int *virtreg_to_realreg) {
-    RegisterInfo *realreg[REG_NUM] = {};
+    RealRegInfo realreg[REG_NUM];
+    memset(&realreg, 0, sizeof(RealRegInfo) * REG_NUM);
 
     int max_used_reg = 0;
     int phi_reg = ERR;
@@ -114,19 +121,41 @@ int reg_assign(Function *f, Vec *reg_info, int *virtreg_to_realreg) {
             }
 
             // argsを解放できるなら解放
-            // caller saveを保持する必要があるなら、エラーを吐く
             if (inst->op == IR_CALL) {
                 for (int i = 0; i < inst->args->len; i++) {
                     Value *v = inst->args->data[i];
                     RegisterInfo *arg_info = at(reg_info, v->num);
                     if (arg_info->endblock == block_index && arg_info->endline == instruction_index) {
-                        realreg[virtreg_to_realreg[arg_info->num]] = NULL;
+                        RealRegInfo *info = &realreg[virtreg_to_realreg[arg_info->num]];
+                        info->info = NULL;
+                        info->prev_used_block = block_index;
+                        info->prev_used_inst = instruction_index;
                     }
                 }
-                for (int i = 1; i < REG_NUM; i++) {
-                    RegisterInfo *info = realreg[i];
+                // caller save regを移動
+                for (int i = 1; i < CALLEE_REG; i++) {
+                    RegisterInfo *info = realreg[i].info;
+                    // caller saveなレジスタが関数を超えて生存するなら
                     if (info && ((info->endblock > block_index) || (info->endblock == block_index && info->endline > instruction_index))) {
-                        error("caller saveの保持は未実装です");
+                        for (int j = CALLEE_REG; j < REG_NUM; j++) {
+                            // callee saveで自分の生存期間が入るレジスタをを探す
+                            if (realreg[j].info == NULL && (realreg[j].prev_used_block < info->startblock || (realreg[j].prev_used_block == info->startblock && realreg[j].prev_used_inst <= info->startline))) {
+                                virtreg_to_realreg[info->num] = j;
+                                realreg[j].info = info;
+                                realreg[i].info = NULL;
+                                // 使ってなかったことになるのでprev_used_blockなどは書き換えない
+                                max_used_reg = MAX(j, max_used_reg);
+
+                                // もしそれがphiで使用されていたなら
+                                if (phi_reg == i) {
+                                    phi_reg = j;
+                                }
+                                break;
+                            }
+                        }
+                        if (virtreg_to_realreg[info->num] == i) {
+                            error("関数呼び出しのためのレジスタを用意できません");
+                        }
                     }
                 }
             }
@@ -134,42 +163,51 @@ int reg_assign(Function *f, Vec *reg_info, int *virtreg_to_realreg) {
             // lhsに使用されるレジスタの使用する値を取得し、解放できるなら解放
             if (inst->lhs && (inst->lhs->ty == V_REG || inst->lhs->ty == V_DEREF)) {
                 lhs_reg = virtreg_to_realreg[inst->lhs->num];
-                RegisterInfo *lhs_info = realreg[lhs_reg];
+                RegisterInfo *lhs_info = realreg[lhs_reg].info;
                 if (lhs_info->endblock == block_index && lhs_info->endline == instruction_index) {
-                    realreg[lhs_reg] = NULL;
+                    RealRegInfo *info = realreg + lhs_reg;
+                    info->info = NULL;
+                    info->prev_used_block = block_index;
+                    info->prev_used_inst = instruction_index;
                 }
             }
 
             // rhs...
             if (inst->rhs && (inst->rhs->ty == V_REG || inst->rhs->ty == V_DEREF)) {
                 rhs_reg = virtreg_to_realreg[inst->rhs->num];
-                RegisterInfo *rhs_info = realreg[rhs_reg];
+                RegisterInfo *rhs_info = realreg[rhs_reg].info;
                 // lhsと同じ可能性が存在する
-                if (realreg[rhs_reg] && rhs_info->endblock == block_index && rhs_info->endline == instruction_index) {
-                    realreg[rhs_reg] = NULL;
+                if (rhs_info && rhs_info->endblock == block_index && rhs_info->endline == instruction_index) {
+                    RealRegInfo *info = realreg + rhs_reg;
+                    info->info = NULL;
+                    info->prev_used_block = block_index;
+                    info->prev_used_inst = instruction_index;
                 }
             }
 
             // lvalがderefの時、そのレジスタは解放されるかもしれない
             if (inst->lval && (inst->lval->ty == V_DEREF)) {
                 lval_reg = virtreg_to_realreg[inst->lval->num];
-                RegisterInfo *lval_info = realreg[lval_reg];
+                RegisterInfo *lval_info = realreg[lval_reg].info;
                 // lhs, rhsと
-                if (realreg[lval_reg] && lval_info->endblock == block_index && lval_info->endline == instruction_index) {
-                    realreg[lval_reg] = NULL;
+                if (lval_info && lval_info->endblock == block_index && lval_info->endline == instruction_index) {
+                    RealRegInfo *info = realreg + lval_reg;
+                    info->info = NULL;
+                    info->prev_used_block = block_index;
+                    info->prev_used_inst = instruction_index;
                 }
                 continue;
             }
 
             if (inst->lval && lval_reg == ERR) {
                 // spillはまだしないので
-                if (lhs_reg > ERR && lhs_reg <= SPILL_RESERVED && realreg[lhs_reg] == NULL) {
+                if (lhs_reg > ERR && lhs_reg <= SPILL_RESERVED && realreg[lhs_reg].info == NULL) {
                     lval_reg = lhs_reg;
-                } else if (rhs_reg > ERR && rhs_reg <= SPILL_RESERVED && realreg[rhs_reg] == NULL) {
+                } else if (rhs_reg > ERR && rhs_reg <= SPILL_RESERVED && realreg[rhs_reg].info == NULL) {
                     lval_reg = rhs_reg;
                 } else {
                     for (int i = 1; i < REG_NUM; i++) {
-                        if (realreg[i] == NULL) {
+                        if (realreg[i].info == NULL) {
                             lval_reg = i;
                             break;
                         }
@@ -189,15 +227,16 @@ int reg_assign(Function *f, Vec *reg_info, int *virtreg_to_realreg) {
                         phi_reg = lval_reg;
                         // phiを呼ばれる場所にもlval_regを書く
                         virtreg_to_realreg[info->phi_to] = lval_reg;
-                        // realregにはphiの情報を書く
-                        realreg[lval_reg] = reg_info->data[info->phi_to];
+
+                        realreg[lval_reg].info = reg_info->data[inst->lval->num]; // reg_info->data[info->phi_to];
                     } else {
                         lval_reg = phi_reg;
-                    }
 
+                        realreg[lval_reg].info = reg_info->data[inst->lval->num];
+                    }
                 } else {
                     if (!(info->endblock == block_index && info->endline == instruction_index)) {
-                        realreg[lval_reg] = reg_info->data[inst->lval->num];
+                        realreg[lval_reg].info = reg_info->data[inst->lval->num];
                     }
                 }
                 virtreg_to_realreg[inst->lval->num] = lval_reg;
