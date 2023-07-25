@@ -10,18 +10,20 @@ Vec *calc_reginfo(Function *f) {
             Instruction *inst = b->instructions->data[j];
             RegisterInfo *liv;
             if (inst->lval && inst->lval->ty == V_REG) {
-                if (livenesses->len != inst->lval->num) {
-                    error("unexpected reg error");
+                // livenessesにnum番目を用意する
+                while (livenesses->len < inst->lval->num + 1) {
+                    push(livenesses, NULL);
                 }
-                liv = malloc(sizeof(RegisterInfo));
-                liv->startblock = i;
+                liv = livenesses->data[inst->lval->num];
+                if (liv == NULL) {
+                    liv = malloc(sizeof(RegisterInfo));
+                    liv->startblock = i;
+                    liv->startline = j;
+                }
                 liv->endblock = i;
-                liv->startline = j;
                 liv->endline = j;
-                liv->is_used_by_phi = 0;
-                liv->phi_to = 0;
                 liv->num = inst->lval->num;
-                push(livenesses, liv);
+                livenesses->data[inst->lval->num] = liv;
             }
             if (inst->lval && inst->lval->ty == V_DEREF) {
                 liv = at(livenesses, inst->lval->num);
@@ -58,26 +60,6 @@ Vec *calc_reginfo(Function *f) {
                     error("not implemented call v.ty != VREG");
                 }
             }
-            if (inst->op == IR_PHI) {
-                // 左辺
-                liv = at(livenesses, inst->lhs->num);
-                if (liv->is_used_by_phi) {
-                    error("unimplemented double use phi");
-                }
-                liv->endblock = i;
-                liv->endline = j;
-                liv->is_used_by_phi = 1;
-                liv->phi_to = inst->lval->num;
-                // 右辺
-                liv = at(livenesses, inst->rhs->num);
-                if (liv->is_used_by_phi) {
-                    error("unimplemented double use phi");
-                }
-                liv->endblock = i;
-                liv->endline = j;
-                liv->is_used_by_phi = 1;
-                liv->phi_to = inst->lval->num;
-            }
         }
     }
     return livenesses;
@@ -87,7 +69,7 @@ void show_reginfo(Vec *reginfo) {
     fprintf(stderr, "start show reginfo\n");
     for (int i = 0; i < reginfo->len; i++) {
         RegisterInfo *info = reginfo->data[i];
-        fprintf(stderr, "RegisterInfo %d {\n  startblock: %d\n  endblock: %d\n  startline: %d\n  endline: %d\n  is_used_by_phi: %d\n  phi_to: %d\n  num: %d\n}\n", i, info->startblock, info->endblock, info->startline, info->endline, info->is_used_by_phi, info->phi_to, info->num);
+        fprintf(stderr, "RegisterInfo %d {\n  startblock: %d\n  endblock: %d\n  startline: %d\n  endline: %d\n  num: %d\n}\n", i, info->startblock, info->endblock, info->startline, info->endline, info->num);
     }
     fprintf(stderr, "end\n");
 }
@@ -100,10 +82,9 @@ typedef struct {
 
 int reg_assign(Function *f, Vec *reg_info, int *virtreg_to_realreg) {
     RealRegInfo realreg[REG_NUM];
-    memset(&realreg, 0, sizeof(RealRegInfo) * REG_NUM);
+    memset(realreg, 0, sizeof(RealRegInfo) * REG_NUM);
 
     int max_used_reg = 0;
-    int phi_reg = ERR;
 
     for (int block_index = 0; block_index < f->blocks->len; block_index++) {
         Block *bl = f->blocks->data[block_index];
@@ -113,12 +94,6 @@ int reg_assign(Function *f, Vec *reg_info, int *virtreg_to_realreg) {
             int lhs_reg = ERR;
             int rhs_reg = ERR;
             int lval_reg = ERR;
-
-            // reginfoでphiの情報はあらかじめ持っておくので、phi_regに格納されている
-            if (inst->op == IR_PHI) {
-                lval_reg = phi_reg;
-                phi_reg = ERR;
-            }
 
             // argsを解放できるなら解放
             if (inst->op == IR_CALL) {
@@ -145,11 +120,6 @@ int reg_assign(Function *f, Vec *reg_info, int *virtreg_to_realreg) {
                                 realreg[i].info = NULL;
                                 // 使ってなかったことになるのでprev_used_blockなどは書き換えない
                                 max_used_reg = MAX(j, max_used_reg);
-
-                                // もしそれがphiで使用されていたなら
-                                if (phi_reg == i) {
-                                    phi_reg = j;
-                                }
                                 break;
                             }
                         }
@@ -200,6 +170,11 @@ int reg_assign(Function *f, Vec *reg_info, int *virtreg_to_realreg) {
             }
 
             if (inst->lval && lval_reg == ERR) {
+                // すでにallocateされていた場合
+                if (virtreg_to_realreg[inst->lval->num]) {
+                    continue;
+                }
+
                 // spillはまだしないので
                 if (lhs_reg > ERR && lhs_reg <= SPILL_RESERVED && realreg[lhs_reg].info == NULL) {
                     lval_reg = lhs_reg;
@@ -221,23 +196,8 @@ int reg_assign(Function *f, Vec *reg_info, int *virtreg_to_realreg) {
             if (lval_reg) {
                 RegisterInfo *info = reg_info->data[inst->lval->num];
 
-                // 現状のΦ関数は最初のとこれで十分
-                if (info->is_used_by_phi) {
-                    if (phi_reg == ERR) {
-                        phi_reg = lval_reg;
-                        // phiを呼ばれる場所にもlval_regを書く
-                        virtreg_to_realreg[info->phi_to] = lval_reg;
-
-                        realreg[lval_reg].info = reg_info->data[inst->lval->num]; // reg_info->data[info->phi_to];
-                    } else {
-                        lval_reg = phi_reg;
-
-                        realreg[lval_reg].info = reg_info->data[inst->lval->num];
-                    }
-                } else {
-                    if (!(info->endblock == block_index && info->endline == instruction_index)) {
-                        realreg[lval_reg].info = reg_info->data[inst->lval->num];
-                    }
+                if (!(info->endblock == block_index && info->endline == instruction_index)) {
+                    realreg[lval_reg].info = reg_info->data[inst->lval->num];
                 }
                 virtreg_to_realreg[inst->lval->num] = lval_reg;
             }
@@ -250,7 +210,8 @@ int reg_assign(Function *f, Vec *reg_info, int *virtreg_to_realreg) {
 
 int assign_register(Function *f, int **virt_to_real) {
     Vec *info = calc_reginfo(f);
-    int *virtreg_to_realreg = malloc(sizeof(int) * info->len);
+    // show_reginfo(info);
+    int *virtreg_to_realreg = calloc(info->len, sizeof(int));
     int v = reg_assign(f, info, virtreg_to_realreg);
     *virt_to_real = virtreg_to_realreg;
     return v;

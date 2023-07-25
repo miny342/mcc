@@ -1,5 +1,4 @@
 #include "test/test.h"
-#include "libc_alternatives.h"
 
 void print(int i) {
     printf("%d\n", i);
@@ -231,7 +230,7 @@ assert(t48, {char b[] = "something"; printf("%s\n", b); return b[3];}, 101)
 assert(t49, {char *c = "???"; printf("%s\n", c); return c[1];}, 63)
 assert(t50, {int a = 1; a <<= 2; a >>= 1; a++; a *= 4; a = ~a; a = -a; int b = a--; return b;}, 13)
 assert(t51, {int a = 1; int b = ++a; b <<= 3; b %= 13; b /= 2; return b;}, 1)
-assert(t52, {int i = 1; int o = 0;return !((i && o) || (i && i));}, 0)
+assert(t52, {int i = 1; int o = 0;int r = !((i && o) || (i && i)); return r;}, 0)
 assert(t53, {
     int i;
     for (i = 0; i < 100; i++) {
@@ -389,6 +388,12 @@ assert(t66, {
 // assert(t68, {
 //     return _t68(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
 // }, 10);
+assert(t69, {
+    int i = 0;
+    int j = 1;
+    int k = j ? i : 1;
+    return k;
+}, 0);
 
 int a = 1;
 int *d[10] = { &a + 1, &a + 2 };
@@ -413,6 +418,7 @@ int main() {
     t61();t62();t63();t64();t65();t66();
     // t67();
     // t68();
+    t69();
 
     printf("OK\n");
 }

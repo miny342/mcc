@@ -108,14 +108,14 @@ void show_ir(Instruction *ir) {
             }
             printe(")");
             break;
-        case IR_PHI:
-            show_value(ir->lval);
-            printe(" = Φ(");
-            show_value(ir->lhs);
-            printe(", ");
-            show_value(ir->rhs);
-            printe(")");
-            break;
+        // case IR_PHI:
+        //     show_value(ir->lval);
+        //     printe(" = Φ(");
+        //     show_value(ir->lhs);
+        //     printe(", ");
+        //     show_value(ir->rhs);
+        //     printe(")");
+        //     break;
         case IR_ADDR:
         case IR_NEG:
         case IR_NOT:
@@ -422,16 +422,35 @@ Value *gen_ir(Node *node) {
             new_block();
 
             if (node->rhs->kind == ND_ELSE) {
+                t = reg_value(used_reg++);
+                t->type = calloc(1, sizeof(Type));
+                t->type->ty = PTR;
+                t->type->ptr_to = calloc(1, sizeof(Type));
+                t->type->ptr_to->ty = VOID;
                 la2 = malloc(sizeof(int));
                 l = gen_ir(node->rhs->lhs);
+                if (l) {
+                    inst = calloc(1, sizeof(Instruction));
+                    inst->op = IR_MOV;
+                    inst->lval = t;
+                    inst->lhs = l;
+                    add_instruction(inst);
+                }
                 inst = calloc(1, sizeof(Instruction));
                 inst->op = IR_GOTO;
                 inst->to = la2;
                 add_instruction(inst);
                 *la1 = new_block();
                 r = gen_ir(node->rhs->rhs);
+                if (r) {
+                    inst = calloc(1, sizeof(Instruction));
+                    inst->op = IR_MOV;
+                    inst->lval = t;
+                    inst->lhs = r;
+                    add_instruction(inst);
+                }
                 *la2 = new_block();
-                if (l && r) return add_op(IR_PHI, l, r);
+                if (l && r) return t;
             } else {
                 r = gen_ir(node->rhs);
                 *la1 = new_block();
@@ -539,13 +558,23 @@ Value *gen_ir(Node *node) {
 
             new_block();
 
-            t = calloc(1, sizeof(Value));
-            t->num = 1;
-            t->ty = V_NUM;
+            t = reg_value(used_reg++);
             t->type = calloc(1, sizeof(Type));
-            t->type->ty = INT;
+            t->type->ty = PTR;
+            t->type->ptr_to = calloc(1, sizeof(Type));
+            t->type->ptr_to->ty = VOID;
 
-            l = add_op(IR_MOV, t, NULL);
+            l = calloc(1, sizeof(Value));
+            l->num = 1;
+            l->ty = V_NUM;
+            l->type = calloc(1, sizeof(Type));
+            l->type->ty = INT;
+
+            inst = calloc(1, sizeof(Instruction));
+            inst->op = IR_MOV;
+            inst->lval = t;
+            inst->lhs = l;
+            add_instruction(inst);
 
             inst = calloc(1, sizeof(Instruction));
             inst->op = IR_GOTO;
@@ -554,17 +583,21 @@ Value *gen_ir(Node *node) {
 
             *la1 = new_block();
 
-            t = calloc(1, sizeof(Value));
-            t->num = 0;
-            t->ty = V_NUM;
-            t->type = calloc(1, sizeof(Type));
-            t->type->ty = INT;
+            l = calloc(1, sizeof(Value));
+            l->num = 0;
+            l->ty = V_NUM;
+            l->type = calloc(1, sizeof(Type));
+            l->type->ty = INT;
 
-            r = add_op(IR_MOV, t, NULL);
+            inst = calloc(1, sizeof(Instruction));
+            inst->op = IR_MOV;
+            inst->lval = t;
+            inst->lhs = l;
+            add_instruction(inst);
 
             *la2 = new_block();
 
-            return add_op(IR_PHI, l, r);
+            return t;
         case ND_OR:
             la1 = malloc(sizeof(int));
             la2 = malloc(sizeof(int));
@@ -586,13 +619,23 @@ Value *gen_ir(Node *node) {
 
             new_block();
 
-            t = calloc(1, sizeof(Value));
-            t->num = 0;
-            t->ty = V_NUM;
+            t = reg_value(used_reg++);
             t->type = calloc(1, sizeof(Type));
-            t->type->ty = INT;
+            t->type->ty = PTR;
+            t->type->ptr_to = calloc(1, sizeof(Type));
+            t->type->ptr_to->ty = VOID;
 
-            l = add_op(IR_MOV, t, NULL);
+            l = calloc(1, sizeof(Value));
+            l->num = 0;
+            l->ty = V_NUM;
+            l->type = calloc(1, sizeof(Type));
+            l->type->ty = INT;
+
+            inst = calloc(1, sizeof(Instruction));
+            inst->op = IR_MOV;
+            inst->lval = t;
+            inst->lhs = l;
+            add_instruction(inst);
 
             inst = calloc(1, sizeof(Instruction));
             inst->op = IR_GOTO;
@@ -601,17 +644,21 @@ Value *gen_ir(Node *node) {
 
             *la1 = new_block();
 
-            t = calloc(1, sizeof(Value));
-            t->num = 1;
-            t->ty = V_NUM;
-            t->type = calloc(1, sizeof(Type));
-            t->type->ty = INT;
+            l = calloc(1, sizeof(Value));
+            l->num = 1;
+            l->ty = V_NUM;
+            l->type = calloc(1, sizeof(Type));
+            l->type->ty = INT;
 
-            r = add_op(IR_MOV, t, NULL);
+            inst = calloc(1, sizeof(Instruction));
+            inst->op = IR_MOV;
+            inst->lval = t;
+            inst->lhs = l;
+            add_instruction(inst);
 
             *la2 = new_block();
 
-            return add_op(IR_PHI, l, r);
+            return t;
         case ND_DECLARATION:
             gen_ir(node->lhs);
             return NULL;

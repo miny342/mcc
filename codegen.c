@@ -1025,8 +1025,6 @@ void gen_instruction(Instruction *inst, int *virt_to_real, int offset) {
         case IR_GOTO:
             printf("  jmp .L%d\n", labelcnt + *inst->to);
             break;
-        case IR_PHI:
-            break;
         case IR_RETURN:
             if (inst->lhs) {
                 printf("  mov rax, ");

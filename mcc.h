@@ -283,7 +283,7 @@ typedef enum {
     IR_BITNOT,
     IR_MOV,
     IR_GOTO,
-    IR_PHI, // ?:, &&, ||
+    // IR_PHI, // ?:, &&, ||
 } InstructionOP;
 
 typedef struct {
@@ -304,8 +304,6 @@ typedef struct {
     int endblock;
     int startline; // startblock内で
     int endline;   // endblock内で
-    int is_used_by_phi; // phi関数に使われているか
-    int phi_to;    // phi関数に呼ばれていた場合のレジスタ番号
     int num;       // 仮想レジスタ番号
 } RegisterInfo;
 
@@ -328,11 +326,11 @@ typedef enum {
     R15,  // reserved by spill
 } RegisterEnum;
 
-#define REG_NUM R15 + 1
+#define REG_NUM (R15 + 1)
 #define CALLEE_REG RBP
 
 #define SPILL_RESERVED R15
-#define SPILLED R15 + 1
+#define SPILLED (R15 + 1)
 
 extern char *use_qword_reg[REG_NUM];
 extern char *use_dword_reg[REG_NUM];
